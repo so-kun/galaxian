@@ -55,6 +55,7 @@ honest so nobody has to reverse-engineer this project to find out.
 | Attack flank from swarm scroll vs extents (within $1C), else random | $13F0 | `src/game/game.ts` |
 | HAVE_AGGRESSIVE_ALIENS set when 3 or fewer aliens remain | $16E7 | `src/game/game.ts` |
 | DIFFICULTY_BASE = player level (+1 per stage, cap 7); DIFFICULTY_EXTRA +1 per 1200 frames, reset per stage, -1 on death | $1655, $14E8, $1300 | `src/game/game.ts` |
+| Credits, 1P/2P start (1 vs 2 credits), two-player alternation a life at a time with a PLAYER N hand-off | $04E1, HANDLE_PLAYER_ONE_KILLED | `src/game/session.ts` |
 
 ## Recorded — real audio, not synthesis
 
@@ -73,9 +74,12 @@ playback rate with stage time.
   "WE ARE THE GALAXIANS" scroll-in, the NAMCO logo page, and the exact
   convoy-charger blink/scroll are simplified, and the demo is driven by a
   simple threat-tracking AI rather than the ROM's scripted fake controller.
-- Two-player alternation, coin/credit handling and the DIP switch service menu
-  are not implemented; the bonus-life threshold uses the default DIP (7000)
-  and is settable via `Game.bonusThreshold`.
+- The DIP switch service menu is not implemented; the bonus-life threshold
+  uses the default DIP (7000) and is settable via `Game.bonusThreshold`, and
+  the free-play / lives DIP options are not surfaced. Two-player alternation
+  keeps each player's full state (score, lives, swarm) but does not reproduce
+  the ROM's exact packed-swarm save/restore format -- it swaps whole game
+  instances instead.
 
 ## Known gaps
 

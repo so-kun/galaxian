@@ -10,7 +10,12 @@ export interface InputState {
   left: boolean;
   right: boolean;
   fire: boolean;
+  /** 1P start ($6800 bit 0). */
   start: boolean;
+  /** 2P start ($6800 bit 1). */
+  start2: boolean;
+  /** Coin ($6000 bit 0). */
+  coin: boolean;
 }
 
 const KEY_MAP: Record<string, keyof InputState> = {
@@ -21,11 +26,21 @@ const KEY_MAP: Record<string, keyof InputState> = {
   Space: 'fire',
   KeyZ: 'fire',
   Enter: 'start',
-  KeyS: 'start',
+  Digit1: 'start',
+  Digit2: 'start2',
+  Digit5: 'coin',
+  KeyC: 'coin',
 };
 
 export class Input {
-  readonly state: InputState = { left: false, right: false, fire: false, start: false };
+  readonly state: InputState = {
+    left: false,
+    right: false,
+    fire: false,
+    start: false,
+    start2: false,
+    coin: false,
+  };
   private touch: Partial<InputState> = {};
 
   attach(target: EventTarget = window): void {
@@ -64,7 +79,10 @@ export class Input {
       this.state.left = false;
       this.state.right = false;
       this.state.fire = false;
+      // A tap acts as coin + 1P start so the game is reachable on a phone; the
+      // session edge-detects the coin, so holding a touch adds only one credit.
       this.state.start = e.touches.length > 0;
+      this.state.coin = e.touches.length > 0;
       update(e.touches);
     };
 

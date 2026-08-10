@@ -46,6 +46,8 @@ export interface SoundSink {
   gameStart(): void;
   extraLife(): void;
   diveStart(): void;
+  /** Coin inserted (optional). */
+  coin?(): void;
   /** Background swarm loop; rate rises the longer the stage runs. */
   setSwarmLoop(playing: boolean, rate: number): void;
 }
@@ -135,6 +137,15 @@ export class Game {
   /** Frames elapsed on the game-over screen without the player pressing start. */
   idleFrames = 0;
 
+  /**
+   * Whether the ship respawns itself after an explosion. A single-player game
+   * respawns automatically; a two-player game leaves it off so the session can
+   * hand control to the other player between lives.
+   */
+  autoRespawn = true;
+  /** Which player this instance is (0 or 1), for the HUD and banners. */
+  playerIndex = 0;
+
   /** TIMING_VARIABLE ($425F); the original decrements, direction is irrelevant. */
   private frame = 0;
 
@@ -213,6 +224,25 @@ export class Game {
     return this.playerState === PlayerState.Alive && !this.gameOver;
   }
 
+  /** True when this player has died, has lives left, and is awaiting its turn. */
+  get pendingResume(): boolean {
+    return (
+      !this.autoRespawn &&
+      this.playerState === PlayerState.Waiting &&
+      this.respawnDelay <= 0 &&
+      this.lives > 0 &&
+      !this.gameOver
+    );
+  }
+
+  /** Bring this player's ship back for its next turn (two-player handoff). */
+  resume(): void {
+    if (this.playerState === PlayerState.Waiting && this.lives > 0) {
+      this.playerState = PlayerState.Alive;
+      this.playerY = PLAYER_SPAWN_Y;
+    }
+  }
+
   step(input: InputState): void {
     this.frame++;
 
@@ -276,14 +306,18 @@ export class Game {
       return;
     }
     if (this.playerState === PlayerState.Waiting) {
-      if (--this.respawnDelay <= 0) {
-        if (this.lives <= 0) {
-          this.gameOver = true;
-        } else {
-          this.playerState = PlayerState.Alive;
-          this.playerY = PLAYER_SPAWN_Y;
-        }
+      if (this.respawnDelay > 0) {
+        this.respawnDelay--;
+        return;
       }
+      if (this.lives <= 0) {
+        this.gameOver = true;
+      } else if (this.autoRespawn) {
+        this.playerState = PlayerState.Alive;
+        this.playerY = PLAYER_SPAWN_Y;
+      }
+      // With autoRespawn off (a two-player game), stay frozen until the
+      // session calls resume() when it is this player's turn again.
       return;
     }
 

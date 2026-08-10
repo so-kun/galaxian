@@ -3,7 +3,7 @@ import { Attract } from '../src/game/attract';
 import { CHAR_SPACE } from '../src/video/gfx';
 import type { InputState } from '../src/input';
 
-const IDLE: InputState = { left: false, right: false, fire: false, start: false };
+const IDLE: InputState = { left: false, right: false, fire: false, start: false, start2: false, coin: false };
 
 /** Read a string back out of character RAM at (charRow, charCol). */
 function readText(videoram: Uint8Array, charRow: number, charCol: number, len: number): string {

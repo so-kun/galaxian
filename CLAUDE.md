@@ -25,5 +25,7 @@ Namco Galaxian (1979) をブラウザで忠実再現する。ROM不要・TypeScr
   yt-dlp はボット検出で失敗 → Playwright 実ブラウザでフレーム取得を試行中。
   **未解決**: Chromium が proxy 経由で ERR_CONNECTION_RESET (curl は 200)。
   `curl -sS "$HTTPS_PROXY/__agentproxy/status"` で診断すること。
-- 実装済: アトラクトモード (attract.ts)、旗艦撃墜時のスコア表示 ($20-$23スプライト)
-- 既知の未実装: 2P交代/コイン/DIP、アトラクトの完全な19段演出 (fidelity-checklist 参照)
+- 実装済: アトラクトモード、旗艦スコア表示、正確な当たり判定/フランク/難易度、
+  2人交代プレイ+コイン/クレジット (session.ts)
+- 操作: 矢印/AD=移動, Space/Z=撃つ, 5/C=コイン, 1=1P開始, 2=2P開始
+- 既知の未実装: DIPサービスメニュー、アトラクトの完全な19段演出 (fidelity-checklist 参照)

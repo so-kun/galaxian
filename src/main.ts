@@ -4,8 +4,7 @@ import { Starfield } from './video/starfield';
 import { Renderer } from './video/renderer';
 import { buildGfx } from './video/gfx';
 import { VideoHardware } from './video/hardware';
-import { Game } from './game/game';
-import { Attract } from './game/attract';
+import { Session } from './game/session';
 import { Input } from './input';
 import { AudioEngine } from './audio/engine';
 
@@ -21,48 +20,23 @@ const video = new VideoHardware(palette, gfx, starfield);
 const input = new Input();
 const audio = new AudioEngine();
 
-/**
- * Two top-level states, as the board has: attract (SCRIPT_ONE) and a real game
- * (SCRIPT_TWO onward). Start moves attract -> game; game over returns to
- * attract, carrying the high score forward.
- */
-const attract = new Attract();
-let game: Game | null = null;
+// The cabinet session owns credits, the attract cycle, and one- or two-player
+// games. It renders whichever is current into the shared hardware memory.
+const session = new Session();
 
 input.attach();
 input.attachTouch(stage);
 video.starsEnabled = true; // $7004
 
-function beginGame(): void {
-  game = new Game();
-  game.sound = audio;
-  game.highScore = attract.highScore;
-  audio.gameStart();
-}
-
 const clock = new FrameClock(() => {
   starfield.advanceFrame();
-
-  if (game) {
-    game.step(input.state);
-    game.render(video.videoram, video.objram);
-    // The real game runs its own attract-on-game-over via Start; here, once it
-    // is over and the player idles, fall back to the attract cycle.
-    if (game.gameOver && game.idleFrames > 240) {
-      attract.highScore = Math.max(attract.highScore, game.highScore);
-      attract.reset();
-      game = null;
-    }
-  } else {
-    if (attract.update(input.state)) beginGame();
-    else attract.render(video.videoram, video.objram);
-  }
-
+  session.update(input.state);
+  session.render(video.videoram, video.objram);
   video.draw(renderer.frame);
   renderer.present();
 });
 
-/** Audio needs a user gesture; the first key or tap starts everything. */
+/** Audio needs a user gesture; the first key or tap starts it. */
 let started = false;
 const begin = async () => {
   if (started) return;
@@ -70,6 +44,7 @@ const begin = async () => {
   overlay.hidden = true;
   try {
     await audio.start();
+    session.sound = audio;
   } catch {
     // No audio: the game still runs.
   }
@@ -90,10 +65,7 @@ clock.start();
   starfield,
   renderer,
   video,
-  attract,
-  get game() {
-    return game;
-  },
+  session,
   input,
   audio,
   clock,

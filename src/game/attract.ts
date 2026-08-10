@@ -41,7 +41,7 @@ const TABLE_FRAMES = 420;
 /** A demo game runs at most this long before the cycle restarts. */
 const DEMO_MAX_FRAMES = 1800;
 
-const IDLE: InputState = { left: false, right: false, fire: false, start: false };
+const IDLE: InputState = { left: false, right: false, fire: false, start: false, start2: false, coin: false };
 
 export class Attract {
   private phase = Phase.Scores;

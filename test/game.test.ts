@@ -5,7 +5,7 @@ import { Swarm } from '../src/game/swarm';
 import { Game } from '../src/game/game';
 import type { InputState } from '../src/input';
 
-const IDLE: InputState = { left: false, right: false, fire: false, start: false };
+const IDLE: InputState = { left: false, right: false, fire: false, start: false, start2: false, coin: false };
 
 describe('dive arc table', () => {
   const arc = buildArcTable();

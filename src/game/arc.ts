@@ -73,50 +73,63 @@ export function arcStepAt(lsb: number): ArcStep | undefined {
 }
 
 /**
- * CALCULATE_TANGENT ($0048): "Used by the aliens to determine what way to face
- * when flying down, and what delta enemy bullets take. Expects: A = distance,
- * D = X coordinate."
+ * CALCULATE_TANGENT ($0048), byte-exact.
  *
- * The original approximates the ratio by repeated shifting and comparison. We
- * compute the same quantity directly and quantise it to the 24 headings the
- * game tracks, which is what the sprite-code arithmetic at $0C3D consumes.
+ * A restoring binary division: eight rounds of "if a >= d then a -= d, emit 1
+ * else emit 0; d >>= 1". The result is an 8-bit ratio of the two byte inputs
+ * that both the enemy-bullet aim and the look-at-player heading are computed
+ * from.
+ *
+ * @param a the numerator byte (the offset toward the player)
+ * @param d the denominator byte (the distance to the player's row)
  */
-export function calculateTangent(distance: number, dx: number): number {
-  if (distance === 0) return 0;
-  const angle = Math.atan2(dx, distance); // radians from straight ahead
-  const heading = Math.round((angle / (2 * Math.PI)) * 24);
-  return Math.max(-12, Math.min(11, heading));
+export function calculateTangent(a: number, d: number): number {
+  a &= 0xff;
+  d &= 0xff;
+  let c = 0;
+  for (let i = 0; i < 8; i++) {
+    c = (c << 1) & 0xff;
+    if (a >= d) {
+      a = (a - d) & 0xff;
+      c |= 1;
+    }
+    d >>= 1;
+  }
+  return c;
 }
 
 /**
- * Sprite code and flip bits for a heading, ported from $0C3D.
+ * Sprite code and flip bits for a heading, ported byte-for-byte from $0C3D.
  *
- * Thirteen base frames cover a quarter turn each way; the hardware's X and Y
- * flip bits supply the other three quadrants. Headings outside -12..11 wrap by
- * a full 24 before being classified.
+ * Seven base frames ($11-$17 plus AnimFrameStartCode) cover a quarter turn;
+ * the hardware's X and Y flip bits supply the other three quadrants. Headings
+ * outside -12..11 fold by $18 and reclassify, exactly as the original's
+ * retry jumps do. "Non-flagship aliens are like bats. They hang upside down
+ * in the swarm."
  */
 export function spriteForHeading(
   animationFrame: number,
   startCode: number,
 ): { code: number; flipX: boolean; flipY: boolean } {
-  // AnimationFrame is a signed byte in the original ($0C40 tests bit 7).
+  // AnimationFrame is a signed byte ($0C40 tests bit 7).
   let a = ((animationFrame & 0xff) ^ 0x80) - 0x80;
-  // The original folds out-of-range headings by +/- $18 and retries.
   while (a >= 0x0c) a -= 0x18;
   while (a < -0x0c) a += 0x18;
 
-  if (a >= 0 && a < 6) {
-    // 180-270 degrees as the player sees it
-    return { code: (a + 0x11 + startCode) & 0x3f, flipX: true, flipY: true };
-  }
-  if (a >= 6) {
-    // 270-360 degrees
-    return { code: (0x1d - a + startCode) & 0x3f, flipX: false, flipY: true };
+  const cpl = (v: number) => ~v & 0xff;
+
+  if (a >= 0) {
+    if (a < 6) {
+      // $0C5D: 180-270 degrees as the player sees it.
+      return { code: ((a + 0x11 + startCode) & 0x3f), flipX: true, flipY: true };
+    }
+    // $0C73: 270-360 degrees.
+    return { code: ((cpl(a) + 0x1e + startCode) & 0x3f), flipX: false, flipY: true };
   }
   if (a >= -6) {
-    // 0-90 degrees
-    return { code: (0x1d + a + startCode) & 0x3f, flipX: false, flipY: false };
+    // $0C49: 90-180 degrees.
+    return { code: ((cpl(a) + 0x12 + startCode) & 0x3f), flipX: true, flipY: false };
   }
-  // 90-180 degrees
-  return { code: (0x11 - a + startCode) & 0x3f, flipX: true, flipY: false };
+  // $0C87: 0-90 degrees.
+  return { code: ((a + 0x1d + startCode) & 0x3f), flipX: false, flipY: false };
 }

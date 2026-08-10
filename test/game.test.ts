@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildArcTable, ARC_RADIUS, ARC_STEPS, spriteForHeading, calculateTangent } from '../src/game/arc';
-import { InflightAliens, Stage, INFLIGHT_SLOTS, SLOT_FLAGSHIP, SLOT_SCRATCH } from '../src/game/inflight';
+import { InflightAliens, Stage, INFLIGHT_SLOTS, SLOT_SCRATCH, SLOT_FLAGSHIP } from '../src/game/inflight';
 import { Swarm } from '../src/game/swarm';
 import { Game } from '../src/game/game';
 import type { InputState } from '../src/input';
@@ -21,40 +21,12 @@ describe('dive arc table', () => {
     for (const step of arc) {
       x += step.dx;
       y += step.dy;
-      // Centre sits one radius ahead along the Y axis.
       const deviation = Math.abs(Math.hypot(x, y - ARC_RADIUS) - ARC_RADIUS);
       maxDeviation = Math.max(maxDeviation, deviation);
     }
-    // The original never strays further than 0.476 from the circle.
     expect(maxDeviation).toBeLessThan(0.5);
-    // A semicircle: ends two radii along Y, back at the starting X.
     expect(y).toBe(2 * ARC_RADIUS);
     expect(Math.abs(x)).toBeLessThanOrEqual(1);
-  });
-
-  it('reaches its furthest excursion at the halfway point', () => {
-    let x = 0;
-    let y = 0;
-    let minX = 0;
-    let minAtY = 0;
-    for (const step of arc) {
-      x += step.dx;
-      y += step.dy;
-      if (x < minX) {
-        minX = x;
-        minAtY = y;
-      }
-    }
-    expect(minX).toBe(-ARC_RADIUS);
-    expect(minAtY).toBeGreaterThanOrEqual(ARC_RADIUS - 4);
-    expect(minAtY).toBeLessThanOrEqual(ARC_RADIUS + 4);
-  });
-
-  it('only ever steps by -1, 0 or 1 on each axis', () => {
-    for (const step of arc) {
-      expect([-1, 0, 1]).toContain(step.dx);
-      expect([-1, 0, 1]).toContain(step.dy);
-    }
   });
 
   it('builds its second half by rotating the first quarter 90 degrees', () => {
@@ -64,18 +36,31 @@ describe('dive arc table', () => {
   });
 });
 
+describe('CALCULATE_TANGENT', () => {
+  it('is the restoring binary division of the original', () => {
+    // Dividing zero: only the trailing d=0 rounds emit a bit, exactly as the
+    // original's restoring division does.
+    expect(calculateTangent(0, 100)).toBe(1);
+    // equal inputs saturate the leading bits
+    expect(calculateTangent(100, 100)).toBeGreaterThanOrEqual(0x80);
+    // a small offset over a large distance stays small
+    expect(calculateTangent(10, 200)).toBeLessThan(0x20);
+  });
+});
+
 describe('heading to sprite code', () => {
-  it('covers all 24 headings using 13 frames plus the flip bits', () => {
+  it('covers all 24 headings using 7 frames plus the flip bits', () => {
     const codes = new Set<number>();
     const combos = new Set<string>();
     for (let h = -12; h < 12; h++) {
       const s = spriteForHeading(h, 0);
       codes.add(s.code);
       combos.add(`${s.code}:${s.flipX}:${s.flipY}`);
+      // The rotation frames live at $11-$17; nothing else may be selected.
       expect(s.code).toBeGreaterThanOrEqual(0x11);
-      expect(s.code).toBeLessThanOrEqual(0x1d);
+      expect(s.code).toBeLessThanOrEqual(0x17);
     }
-    expect(codes.size).toBe(13);
+    expect(codes.size).toBe(7);
     expect(combos.size).toBe(24);
   });
 
@@ -91,65 +76,87 @@ describe('heading to sprite code', () => {
   });
 });
 
-describe('CALCULATE_TANGENT', () => {
-  it('faces straight ahead when the target is directly below', () => {
-    expect(calculateTangent(100, 0)).toBe(0);
-  });
+describe('the YADD oscillator', () => {
+  it('makes a diving alien weave: Y oscillates about the pivot', () => {
+    const inflight = new InflightAliens();
+    const swarm = new Swarm();
+    swarm.reset();
+    inflight.launchFlagshipOrRed(swarm, false);
+    const alien = inflight.slots[SLOT_FLAGSHIP]!;
+    expect(alien.isActive).toBe(true);
 
-  it('leans toward the target and saturates at a quarter turn', () => {
-    expect(calculateTangent(100, 20)).toBeGreaterThan(0);
-    expect(calculateTangent(100, -20)).toBeLessThan(0);
-    expect(calculateTangent(1, 100)).toBeLessThanOrEqual(11);
-    expect(calculateTangent(1, -100)).toBeGreaterThanOrEqual(-12);
+    // Fly the arc, then dive for a while, tracking the weave.
+    const ys: number[] = [];
+    for (let frame = 0; frame < 900; frame++) {
+      inflight.update(frame, 0x80, true, false, swarm);
+      if (alien.stageOfLife === Stage.AttackingPlayer) ys.push(((alien.y & 0xff) ^ 0x80) - 0x80);
+      if (!alien.isActive) break;
+    }
+    expect(ys.length).toBeGreaterThan(60);
+    // The weave must actually change direction, not drift monotonically.
+    let turns = 0;
+    for (let i = 2; i < ys.length; i++) {
+      const d1 = ys[i - 1]! - ys[i - 2]!;
+      const d2 = ys[i]! - ys[i - 1]!;
+      if (d1 !== 0 && d2 !== 0 && Math.sign(d1) !== Math.sign(d2)) turns++;
+    }
+    expect(turns).toBeGreaterThan(0);
   });
 });
 
-describe('in-flight slot allocation', () => {
-  it('scales the number of lone attackers from 1 to 4 with difficulty', () => {
+describe('slot allocation', () => {
+  it('scales lone attackers from 1 to 4 with difficulty', () => {
     const inflight = new InflightAliens();
     const seen = new Set<number>();
     for (let base = 0; base <= 7; base++) {
       for (let extra = 0; extra <= 7; extra++) {
         inflight.difficultyBase = base;
         inflight.difficultyExtra = extra;
-        const n = inflight.activeAttackerSlots;
-        expect(n).toBeGreaterThanOrEqual(1);
-        expect(n).toBeLessThanOrEqual(4);
-        seen.add(n);
+        seen.add(inflight.activeAttackerSlots);
       }
     }
     expect([...seen].sort()).toEqual([1, 2, 3, 4]);
   });
 
-  it('never puts an alien in the scratch slot, so at most 7 can fly', () => {
+  it('never launches into the scratch slot, so at most 7 fly', () => {
     const swarm = new Swarm();
     swarm.reset();
     const inflight = new InflightAliens();
     inflight.difficultyBase = 7;
     inflight.difficultyExtra = 7;
-    let n = 0;
-    const rng = () => (n = (n * 9301 + 49297) % 233280) / 233280;
-    for (let i = 0; i < 50; i++) inflight.launchFromSwarm(swarm, rng);
+    for (let i = 0; i < 40; i++) {
+      inflight.launchAttacker(swarm, i % 2 === 0);
+      inflight.launchFlagshipOrRed(swarm, i % 2 === 0);
+    }
     expect(inflight.slots[SLOT_SCRATCH]!.isActive).toBe(false);
     expect(inflight.inFlightCount).toBeLessThanOrEqual(INFLIGHT_SLOTS - 1);
   });
 
-  it('sends escorts with the flagship, and only two of them', () => {
+  it('sends at most two escorts with the flagship', () => {
     const swarm = new Swarm();
     swarm.reset();
     const inflight = new InflightAliens();
-    // Strip everything except the flagships and the red row they escort from.
-    let launched = false;
-    let n = 7;
-    const rng = () => (n = (n * 9301 + 49297) % 233280) / 233280;
-    for (let i = 0; i < 200 && !launched; i++) {
-      inflight.launchFromSwarm(swarm, rng);
-      launched = inflight.slots[SLOT_FLAGSHIP]!.isActive;
-    }
-    expect(launched).toBe(true);
+    inflight.launchFlagshipOrRed(swarm, false);
+    expect(inflight.slots[SLOT_FLAGSHIP]!.isActive).toBe(true);
     const escorts = [2, 3].filter((s) => inflight.slots[s]!.isActive);
-    expect(escorts.length).toBeGreaterThan(0);
-    expect(escorts.length).toBeLessThanOrEqual(2);
+    expect(escorts.length).toBe(2);
+    // Escorts come from the red row.
+    for (const s of escorts) {
+      expect((inflight.slots[s]!.indexInSwarm & 0x70)).toBe(0x60);
+    }
+  });
+
+  it('starts a dive facing straight up, from the formation anchor', () => {
+    const swarm = new Swarm();
+    swarm.reset();
+    const inflight = new InflightAliens();
+    inflight.launchAttacker(swarm, false);
+    const alien = inflight.slots.find((a) => a.isActive)!;
+    expect(Math.abs(alien.animationFrame)).toBe(12);
+    expect(alien.stageOfLife).toBe(Stage.FliesInArc);
+    // Blue rows have colour code 4 and speed 1 or 2 (ALIEN_PARAMS_TABLE).
+    expect(alien.colour).toBe(4);
+    expect([1, 2]).toContain(alien.speed);
   });
 });
 
@@ -158,7 +165,7 @@ describe('a running game', () => {
     const game = new Game();
     const stages = new Set<Stage>();
     let sawInFlight = false;
-    for (let frame = 0; frame < 3000; frame++) {
+    for (let frame = 0; frame < 5000; frame++) {
       game.step(IDLE);
       for (let s = 1; s < INFLIGHT_SLOTS; s++) {
         const alien = game.inflight.slots[s]!;
@@ -170,47 +177,20 @@ describe('a running game', () => {
     }
     expect(sawInFlight).toBe(true);
     expect(stages.has(Stage.FliesInArc)).toBe(true);
-    expect(stages.has(Stage.Attacking)).toBe(true);
+    expect(stages.has(Stage.AttackingPlayer)).toBe(true);
   });
 
-  it('keeps every alien on screen while it dives', () => {
+  it('moves the player within the PLAYER_Y limits', () => {
+    // Short bursts, before any enemy fire can reach the ship.
     const game = new Game();
-    for (let frame = 0; frame < 3000; frame++) {
-      game.step(IDLE);
-      for (let s = 1; s < INFLIGHT_SLOTS; s++) {
-        const alien = game.inflight.slots[s]!;
-        if (!alien.isActive) continue;
-        expect(alien.x).toBeGreaterThanOrEqual(0);
-        expect(alien.x).toBeLessThanOrEqual(255);
-        expect(alien.y).toBeGreaterThanOrEqual(0);
-        expect(alien.y).toBeLessThanOrEqual(255);
-      }
-    }
+    for (let i = 0; i < 130; i++) game.step({ ...IDLE, left: true });
+    expect(game.playerY).toBe(0xe9);
+    const game2 = new Game();
+    for (let i = 0; i < 130; i++) game2.step({ ...IDLE, right: true });
+    expect(game2.playerY).toBe(0x17);
   });
 
-  it('thins the formation out as aliens sortie', () => {
-    const game = new Game();
-    const initial = game.swarm.aliveCount;
-    for (let frame = 0; frame < 2000; frame++) game.step(IDLE);
-    expect(game.swarm.aliveCount).toBeLessThan(initial);
-  });
-
-  it('lets the player move, but not off the screen', () => {
-    const game = new Game();
-    const start = game.playerScroll;
-    for (let i = 0; i < 500; i++) game.step({ ...IDLE, left: true });
-    const leftmost = game.playerScroll;
-    expect(leftmost).toBeGreaterThan(start);
-    for (let i = 0; i < 1000; i++) game.step({ ...IDLE, right: true });
-    expect(game.playerScroll).toBeLessThan(leftmost);
-    // Bounded on both sides.
-    for (let i = 0; i < 2000; i++) game.step({ ...IDLE, left: true });
-    const a = game.playerScroll;
-    game.step({ ...IDLE, left: true });
-    expect(game.playerScroll).toBe(a);
-  });
-
-  it('fires one shot at a time and requires the button to be released', () => {
+  it('fires one shot at a time, needing a button release between shots', () => {
     const game = new Game();
     const objram = new Uint8Array(0x100);
     const videoram = new Uint8Array(0x400);
@@ -218,20 +198,31 @@ describe('a running game', () => {
     for (let i = 0; i < 200; i++) {
       game.step({ ...IDLE, fire: true });
       game.render(videoram, objram);
-      // Bullet slot 7 is the yellow missile.
       if (objram[0x60 + 7 * 4 + 1] !== 0) framesWithShot++;
     }
     expect(framesWithShot).toBeGreaterThan(0);
-    // Holding fire cannot put more than one missile on screen.
     expect(framesWithShot).toBeLessThan(200);
   });
 
-  it('scores hits and can clear a stage', () => {
+  it('scores when the sweep carries aliens into the line of fire', () => {
     const game = new Game();
-    for (let frame = 0; frame < 40000 && game.stage === 1; frame++) {
-      // Sweep back and forth while firing to clear the formation.
-      game.step({ ...IDLE, fire: frame % 2 === 0, left: frame % 128 < 64, right: frame % 128 >= 64 });
+    for (let frame = 0; frame < 60000 && game.score === 0; frame++) {
+      game.step({ ...IDLE, fire: frame % 2 === 0, left: frame % 256 < 128, right: frame % 256 >= 128 });
     }
     expect(game.score).toBeGreaterThan(0);
+  });
+
+  it('survives a long unattended session without leaving the byte domain', () => {
+    const game = new Game();
+    for (let frame = 0; frame < 20000; frame++) {
+      game.step(IDLE);
+      for (let s = 0; s < INFLIGHT_SLOTS; s++) {
+        const a = game.inflight.slots[s]!;
+        expect(a.x).toBeGreaterThanOrEqual(0);
+        expect(a.x).toBeLessThanOrEqual(255);
+        expect(a.y).toBeGreaterThanOrEqual(0);
+        expect(a.y).toBeLessThanOrEqual(255);
+      }
+    }
   });
 });

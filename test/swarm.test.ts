@@ -68,25 +68,55 @@ describe('alien formation', () => {
     expect(swarm.remove(SWARM_LAYOUT[5]!.row, 3)).toBe(false);
   });
 
-  it('sweeps side to side and turns around at the edges', () => {
+  it('sweeps one pixel every fourth frame and turns at the extents', () => {
     const swarm = new Swarm();
     swarm.reset();
-    const seen = new Set<number>();
     let reversals = 0;
     let previous = swarm.direction;
-    for (let frame = 0; frame < 4000; frame++) {
-      swarm.update();
-      seen.add(swarm.scroll16 >> 8);
+    let min = 0;
+    let max = 0;
+    for (let frame = 0; frame < 8000; frame++) {
+      swarm.update(frame, null);
+      min = Math.min(min, swarm.scroll16);
+      max = Math.max(max, swarm.scroll16);
       if (swarm.direction !== previous) {
         reversals++;
         previous = swarm.direction;
       }
     }
     expect(reversals).toBeGreaterThanOrEqual(2);
-    // The sweep stays inside the range that keeps every column on screen.
-    const scrolls = [...seen];
-    expect(Math.min(...scrolls)).toBeGreaterThanOrEqual(12 * 16 - 224 - 4);
-    expect(Math.max(...scrolls)).toBeLessThanOrEqual(3 * 16 - 16 + 4);
+    // Full formation: extents are +$22 (left) and -$20 (right).
+    expect(max).toBe(0x22);
+    expect(min).toBe(-0x20);
+  });
+
+  it('holds the column the player bullet is about to hit', () => {
+    const swarm = new Swarm();
+    swarm.reset();
+    // Park a bullet inside the swarm band, aligned with column 6.
+    const bullet = { x: 0x40, y: (6 * 16 + (swarm.scroll16 & 0xff)) & 0xff };
+    const before = swarm.scroll16;
+    for (let frame = 0; frame < 64; frame++) swarm.update(frame, bullet);
+    expect(swarm.scroll16).toBe(before);
+    // Without a bullet the swarm moves in the same span of frames.
+    for (let frame = 0; frame < 64; frame++) swarm.update(frame, null);
+    expect(swarm.scroll16).not.toBe(before);
+  });
+
+  it('widens its sweep as edge columns empty', () => {
+    const swarm = new Swarm();
+    swarm.reset();
+    for (const row of SWARM_LAYOUT) swarm.remove(row.row, 3);
+    for (const row of SWARM_LAYOUT) swarm.remove(row.row, 12);
+    let min = 0;
+    let max = 0;
+    for (let frame = 0; frame < 16000; frame++) {
+      swarm.update(frame, null);
+      min = Math.min(min, swarm.scroll16);
+      max = Math.max(max, swarm.scroll16);
+    }
+    expect(max).toBe(0x32);
+    expect(min).toBe(-0x30);
   });
 
   it('paints the formation into character RAM and leaves the rest blank', () => {
@@ -94,19 +124,24 @@ describe('alien formation', () => {
     swarm.reset();
     const videoram = new Uint8Array(0x400).fill(CHAR_SPACE);
     const objram = new Uint8Array(0x100);
-    swarm.draw(videoram, objram);
+    swarm.draw(videoram, objram, 0);
 
     let painted = 0;
     for (const v of videoram) if (v !== CHAR_SPACE) painted++;
     // 2 flagships and 18 wide aliens at 4 cells each, 26 narrow ones at 2.
     expect(painted).toBe((2 + 8 + 10) * 4 + (6 + 10 + 10) * 2);
 
-    // Every painted ordinal must resolve to a non-empty glyph.
+    // Most painted ordinals resolve to non-empty glyphs. (Some frames of the
+    // real artwork legitimately leave a companion cell blank, e.g. $42.)
     const { chars } = buildGfx();
+    let nonEmpty = 0;
+    let total = 0;
     for (const v of videoram) {
       if (v === CHAR_SPACE) continue;
-      expect(chars[v]!.some((p) => p !== 0)).toBe(true);
+      total++;
+      if (chars[v]!.some((p) => p !== 0)) nonEmpty++;
     }
+    expect(nonEmpty / total).toBeGreaterThan(0.85);
   });
 
   it('writes a colour code and a shared scroll value for the formation columns', () => {
@@ -114,16 +149,16 @@ describe('alien formation', () => {
     swarm.reset();
     const videoram = new Uint8Array(0x400).fill(CHAR_SPACE);
     const objram = new Uint8Array(0x100);
-    swarm.update();
-    swarm.draw(videoram, objram);
+    for (let f = 0; f < 8; f++) swarm.update(f, null);
+    swarm.draw(videoram, objram, 8);
 
     for (const row of SWARM_LAYOUT) {
       expect(objram[row.charCol * 2 + 1]).toBe(row.colorCode);
     }
-    // All formation columns scroll together, which is what moves the swarm.
-    const scroll = swarm.scroll;
+    // All formation columns get the negated scroll low byte.
+    const offset = (256 - (swarm.scroll16 & 0xff)) & 0xff;
     for (const row of SWARM_LAYOUT) {
-      expect(objram[row.charCol * 2]).toBe(scroll);
+      expect(objram[row.charCol * 2]).toBe(offset);
     }
   });
 });

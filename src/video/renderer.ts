@@ -68,8 +68,10 @@ export class Renderer {
     const dst = this.out;
 
     for (let row = 0; row < FB_HEIGHT; row++) {
-      // Hardware scanline -> player's horizontal axis.
-      const screenX = this.flipScreenY ? VISIBLE_W - 1 - row : row;
+      // Hardware scanline -> player's horizontal axis, inverted: a higher
+      // hardware Y is further LEFT, which is why the game moves objects left
+      // by incrementing Y.
+      const screenX = this.flipScreenY ? row : VISIBLE_W - 1 - row;
       const rowBase = row * FB_WIDTH;
 
       for (let dot = 0; dot < SCREEN_W; dot++) {

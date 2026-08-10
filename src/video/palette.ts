@@ -29,6 +29,8 @@
  */
 export const RGB_MAXIMUM = 224;
 
+import { TILE_CLUT } from './gfx-data';
+
 const RGB_RESISTANCES = [1000, 470, 220] as const;
 
 /**
@@ -97,35 +99,18 @@ export function unpackRgb(v: number): [number, number, number] {
 }
 
 /**
- * Contents of the 6L colour PROM.
- *
- * IMPORTANT: these 32 bytes are a *reconstruction*, not a dump. The original
- * PROM is copyrighted ROM data and no free dump is legitimately available, so
- * the values here were chosen to land on the same quantisation lattice the
- * hardware produces (8 red levels x 8 green x 4 blue) and to match the colours
- * the game is known to display. `loadColorProm()` will replace them wholesale
- * if a real dump is ever supplied.
- *
- * Layout: entry = colourCode * 4 + pen. Pen 0 is always transparent/black.
+ * Colour codes as the game uses them, from ALIEN_PARAMS_TABLE at $1DD1 and the
+ * attribute tables: 0 white text, 1 flagship, 2 red row, 3 purple row,
+ * 4 blue rows, 5 red text, 6 player ship, 7 explosion.
  */
-export const DEFAULT_COLOR_PROM = Uint8Array.from([
-  // code 0 -- swarm blue / general blue
-  0x00, 0xc0, 0xf6, 0x07,
-  // code 1 -- swarm purple
-  0x00, 0xc7, 0xf6, 0x07,
-  // code 2 -- swarm red
-  0x00, 0x07, 0xf6, 0x3f,
-  // code 3 -- flagship yellow
-  0x00, 0x3f, 0xf6, 0x07,
-  // code 4 -- player ship
-  0x00, 0xf8, 0xf6, 0x3f,
-  // code 5 -- explosion
-  0x00, 0x07, 0x3f, 0xf6,
-  // code 6 -- text / HUD white
-  0x00, 0xf6, 0x3f, 0x07,
-  // code 7 -- accent
-  0x00, 0xf8, 0xc0, 0xf6,
-]);
+export const COLOR_CODE_TEXT_WHITE = 0;
+export const COLOR_CODE_FLAGSHIP = 1;
+export const COLOR_CODE_RED = 2;
+export const COLOR_CODE_PURPLE = 3;
+export const COLOR_CODE_BLUE = 4;
+export const COLOR_CODE_TEXT_RED = 5;
+export const COLOR_CODE_PLAYER = 6;
+export const COLOR_CODE_EXPLOSION = 7;
 
 /** Number of colour codes selectable by a tile/sprite attribute byte. */
 export const COLOR_CODES = 8;
@@ -140,10 +125,23 @@ export class Palette {
   /** 8 packed RGBA entries for the bullet/shell outputs. */
   readonly bulletColors = new Uint32Array(8);
 
-  constructor(prom: Uint8Array = DEFAULT_COLOR_PROM) {
-    this.loadColorProm(prom);
+  constructor(prom?: Uint8Array) {
+    if (prom) this.loadColorProm(prom);
+    else this.loadClut();
     this.buildStarColors();
     this.buildBulletColors();
+  }
+
+  /**
+   * Load the real colours decoded from the 6L PROM (via gfx-data.ts). The
+   * first 32 entries are the tile/sprite pens; the last two override the
+   * bullet colours (yellow player missile, white enemy shell).
+   */
+  private loadClut(): void {
+    for (let i = 0; i < this.pens.length; i++) {
+      const [r, g, b] = TILE_CLUT[i]!;
+      this.pens[i] = packRgb(r, g, b);
+    }
   }
 
   loadColorProm(prom: Uint8Array): void {
@@ -182,8 +180,10 @@ export class Palette {
 
   /** Shells (entries 0-6) render white; the missile (entry 7) renders yellow. */
   private buildBulletColors(): void {
-    for (let i = 0; i < 7; i++) this.bulletColors[i] = packRgb(0xff, 0xff, 0xff);
-    this.bulletColors[7] = packRgb(0xff, 0xff, 0x00);
+    const [wr, wg, wb] = TILE_CLUT[33] ?? [0xef, 0xef, 0xef];
+    const [yr, yg, yb] = TILE_CLUT[32] ?? [0xef, 0xef, 0x00];
+    for (let i = 0; i < 7; i++) this.bulletColors[i] = packRgb(wr, wg, wb);
+    this.bulletColors[7] = packRgb(yr, yg, yb);
   }
 
   /** Look up a pen for a given colour code (0-7) and pixel value (0-3). */

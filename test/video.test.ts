@@ -6,8 +6,8 @@ import {
   CHANNEL_LEVELS_2BIT,
   decodePromByte,
   unpackRgb,
-  DEFAULT_COLOR_PROM,
 } from '../src/video/palette';
+import { TILE_CLUT } from '../src/video/gfx-data';
 import { Starfield } from '../src/video/starfield';
 import { SCREEN_W, SCREEN_H, XSCALE, VBEND } from '../src/core/clock';
 
@@ -39,15 +39,16 @@ describe('resistor ladder palette', () => {
     expect(unpackRgb(decodePromByte(0x00))).toEqual([0, 0, 0]);
   });
 
-  it('keeps every default PROM colour on the hardware quantisation lattice', () => {
-    const reds = new Set(CHANNEL_LEVELS_3BIT);
-    const blues = new Set(CHANNEL_LEVELS_2BIT);
-    for (const byte of DEFAULT_COLOR_PROM) {
-      const [r, g, b] = unpackRgb(decodePromByte(byte));
-      expect(reds.has(r)).toBe(true);
-      expect(reds.has(g)).toBe(true);
-      expect(blues.has(b)).toBe(true);
+  it('carries the real PROM colours: 32 pens plus the two bullet colours', () => {
+    expect(TILE_CLUT.length).toBe(34);
+    // Pen 0 of every colour code is black.
+    for (let code = 0; code < 8; code++) {
+      expect(TILE_CLUT[code * 4]).toEqual([0, 0, 0]);
     }
+    // The known anchors: flagship yellow, purple, and the player's white.
+    expect(TILE_CLUT[1 * 4 + 3]).toEqual([255, 255, 0]);
+    expect(TILE_CLUT[3 * 4 + 2]).toEqual([151, 0, 247]);
+    expect(TILE_CLUT[6 * 4 + 1]).toEqual([222, 222, 247]);
   });
 
   it('makes pen 0 of every colour code transparent black', () => {
@@ -63,10 +64,10 @@ describe('resistor ladder palette', () => {
     const levels = new Set<number>();
     for (const c of p.starColors) for (const ch of unpackRgb(c)) levels.add(ch);
     expect([...levels].sort((a, b) => a - b)).toEqual([0, 194, 214, 255]);
-    // Bullets: seven white shells, one yellow missile.
-    expect(unpackRgb(p.bulletColors[0]!)).toEqual([255, 255, 255]);
-    expect(unpackRgb(p.bulletColors[6]!)).toEqual([255, 255, 255]);
-    expect(unpackRgb(p.bulletColors[7]!)).toEqual([255, 255, 0]);
+    // Bullets: seven white shells, one yellow missile (from the PROM data).
+    expect(unpackRgb(p.bulletColors[0]!)).toEqual([239, 239, 239]);
+    expect(unpackRgb(p.bulletColors[6]!)).toEqual([239, 239, 239]);
+    expect(unpackRgb(p.bulletColors[7]!)).toEqual([239, 239, 0]);
   });
 });
 

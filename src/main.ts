@@ -6,7 +6,7 @@ import { buildGfx } from './video/gfx';
 import { VideoHardware } from './video/hardware';
 import { Game } from './game/game';
 import { Input } from './input';
-import { AudioEngine, SFX_GAME_START } from './audio/engine';
+import { AudioEngine } from './audio/engine';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -27,17 +27,13 @@ video.starsEnabled = true; // $7004
 
 const clock = new FrameClock(() => {
   starfield.advanceFrame();
-  audio.tick();
   game.step(input.state);
   game.render(video.videoram, video.objram);
   video.draw(renderer.frame);
   renderer.present();
 });
 
-/**
- * Audio cannot start without a user gesture, so the first interaction both
- * brings up the sound section and plays the game-start tune from $1E68.
- */
+/** Audio needs a user gesture; the first key or tap starts everything. */
 let started = false;
 const begin = async () => {
   if (started) return;
@@ -46,14 +42,14 @@ const begin = async () => {
   try {
     await audio.start();
     game.sound = audio;
-    audio.playSequence(SFX_GAME_START);
+    audio.gameStart();
   } catch {
-    // No audio available: the game still plays.
+    // No audio: the game still runs.
   }
 };
 
 for (const event of ['keydown', 'pointerdown', 'touchstart']) {
-  addEventListener(event, begin, { once: false });
+  addEventListener(event, begin);
 }
 
 const fit = () => renderer.fitToWindow(stage);

@@ -46,9 +46,11 @@ honest so nobody has to reverse-engineer this project to find out.
 | Attack cadence: counter bank with the $15E3 defaults; flagship sortie timer pair | $151E, $155F | `src/game/game.ts` |
 | Flagship shock: swarm freezes when a flagship is hit | $1690 | `src/game/game.ts` |
 | Scores: ALIEN_SCORE_TABLE incl. convoy 150/200/300/800 by escorts-killed-first | $22D0, $1273 | `src/game/game.ts` |
+| Flagship points sprite ($20-$23) held at the kill site for 50 frames after the explosion | $112D, $039A | `src/game/inflight.ts`, `game.ts` |
 | Dying reduces DIFFICULTY_EXTRA by one | $1300 | `src/game/game.ts` |
 | Colour codes and speeds per row (ALIEN_PARAMS_TABLE) | $1DD1 | `src/game/swarm.ts` |
 | HUD: red header/white scores, lives bottom-left, stage flags ($68 tens / $6C units) bottom-right | $2521, $214E | `src/game/game.ts` |
+| Attract cycle: score screen, SCORE ADVANCE TABLE (convoy charger + ranks), demo game; start begins play | SCRIPT_ONE $03D2 | `src/game/attract.ts` |
 
 ## Recorded — real audio, not synthesis
 
@@ -64,7 +66,11 @@ playback rate with stage time.
 
 - **DIFFICULTY_BASE_VALUE's climb during a stage.** The increment site exists
   ($1662) but its trigger cadence was not extracted; we step it every ~17 s.
-- **Attract mode** is not implemented; the game boots straight into play.
+- **Attract mode** reproduces the visible cycle (score screen, score-advance
+  table, demo game) but not the full 19-stage SCRIPT_ONE choreography: the
+  "WE ARE THE GALAXIANS" scroll-in, the NAMCO logo page, and the exact
+  convoy-charger blink/scroll are simplified, and the demo is driven by a
+  simple threat-tracking AI rather than the ROM's scripted fake controller.
 - **Aggression flag** (HAVE_AGGRESSIVE_ALIENS): the setter was not located; we
   raise it when the blue/purple rows are gone or ≤5 aliens remain.
 - **Flank choice** ($13F0 uses swarm geometry; we flip a coin periodically).
@@ -78,7 +84,6 @@ playback rate with stage time.
 - The swarm redraw happens wholesale per frame; the original repaints
   incrementally through a command queue (visible as slight tearing on real
   hardware, absent here).
-- Flagship "150/300/800" bonus score labels are not drawn at the kill site.
 - The arc table's 25-step quarter is stored, not derived; a greedy circle walk
   reproduces only 16/25 steps, so the original generator remains unknown.
 - Star LFSR reset-vs-free-run at VSYNC is disputed; we follow MAME's free-run.

@@ -23,7 +23,7 @@
 
 import { ARC_TABLE, calculateTangent, spriteForHeading } from './arc';
 import { ALIEN_EXPLOSION_SPRITE } from '../video/gfx';
-import { COLOR_CODE_EXPLOSION } from '../video/palette';
+import { COLOR_CODE_EXPLOSION, COLOR_CODE_TEXT_WHITE } from '../video/palette';
 import type { Swarm } from './swarm';
 import { SWARM_LAYOUT, swarmIndex, rowAnchorX, colAnchorY, rowByIndex } from './swarm';
 import { INFLIGHT_FLAGSHIP_OFFSET } from '../video/gfx';
@@ -66,6 +66,13 @@ export interface InflightAlien {
   tempCounter1: number;
   tempCounter2: number;
   dyingCounter: number;
+  /** Dying frame index, animating the two explosion frames ($1E/$1F). */
+  dyingAnimFrame: number;
+  /**
+   * Points sprite to show after a flagship's explosion ($20 + score factor),
+   * or 0 for a plain alien that just vanishes.
+   */
+  pointSprite: number;
   arcTableLsb: number;
   colour: number;
   sortieCount: number;
@@ -92,6 +99,8 @@ function emptyAlien(): InflightAlien {
     tempCounter1: 0,
     tempCounter2: 0,
     dyingCounter: 0,
+    dyingAnimFrame: 0,
+    pointSprite: 0,
     arcTableLsb: 0,
     colour: 0,
     sortieCount: 0,
@@ -357,19 +366,41 @@ export class InflightAliens {
     }
   }
 
-  /** Kill an in-flight alien: it switches to the dying explosion. */
-  kill(slot: number): void {
+  /**
+   * Kill an in-flight alien: it plays the two-frame explosion, then (for a
+   * flagship) freezes as its points-value sprite for a while.
+   *
+   * @param pointSprite $20-$23 (the "150".."800" sprites) to show after the
+   *   explosion, or 0 for a rank-and-file alien that simply vanishes.
+   */
+  kill(slot: number, pointSprite = 0): void {
     const alien = this.slots[slot]!;
     alien.isActive = false;
     alien.isDying = true;
+    // Explosion: two frames, 8 game-frames each (TempCounter1 = 4 at 60 Hz).
     alien.dyingCounter = 16;
+    alien.dyingAnimFrame = 0;
+    alien.pointSprite = pointSprite;
   }
 
   private updateDying(alien: InflightAlien): void {
-    if (--alien.dyingCounter <= 0) {
-      alien.isDying = false;
-      this.events.onDiveEnd?.();
+    if (--alien.dyingCounter > 0) {
+      // Advance the explosion animation across its two frames.
+      if (alien.pointSprite === 0) {
+        alien.dyingAnimFrame = alien.dyingCounter < 8 ? 1 : 0;
+      }
+      return;
     }
+    // Explosion finished. A flagship now shows its points value ($112D:
+    // DISPLAY_FLAGSHIP_POINTS_VALUE holds it for $32 = 50 frames).
+    if (alien.pointSprite !== 0 && alien.dyingAnimFrame !== 2) {
+      alien.dyingAnimFrame = 2; // 2 marks "showing points"
+      alien.dyingCounter = 50;
+      return;
+    }
+    alien.isDying = false;
+    alien.pointSprite = 0;
+    this.events.onDiveEnd?.();
   }
 
   /**
@@ -688,9 +719,13 @@ export class InflightAliens {
       const alien = this.slots[slot]!;
       const base = spriteBase + slot * 4;
       if (alien.isDying) {
+        // dyingAnimFrame 0/1 = the two explosion frames; 2 = points value.
+        const showingPoints = alien.dyingAnimFrame === 2;
         objram[base] = byte(~alien.y - 8);
-        objram[base + 1] = ALIEN_EXPLOSION_SPRITE;
-        objram[base + 2] = COLOR_CODE_EXPLOSION;
+        objram[base + 1] = showingPoints
+          ? alien.pointSprite
+          : ALIEN_EXPLOSION_SPRITE + (alien.dyingAnimFrame & 1);
+        objram[base + 2] = showingPoints ? COLOR_CODE_TEXT_WHITE : COLOR_CODE_EXPLOSION;
         objram[base + 3] = byte(alien.x - 8);
         continue;
       }

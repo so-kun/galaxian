@@ -56,6 +56,11 @@ export const ALIEN_SCORES = [30, 40, 50, 60, 70, 80, 90, 100, 150, 200, 300, 800
 /** Bonus thresholds from the DIP switch table at $1F52. */
 export const BONUS_THRESHOLDS = [7000, 10000, 12000, 20000] as const;
 
+/** Flagship payout by FLAGSHIP_SCORE_FACTOR (0..3): alone, +1, +2 escorts, full convoy. */
+export const FLAGSHIP_SCORES = [150, 200, 300, 800] as const;
+/** Sprite code of the "150" points value; +factor selects 200/300/800 ($20-$23). */
+export const FLAGSHIP_POINT_SPRITE_BASE = 0x20;
+
 /** ALIEN_ATTACK_COUNTER_DEFAULT_VALUES ($15E3). */
 const ATTACK_COUNTER_DEFAULTS = [
   0x05, 0x2f, 0x43, 0x77, 0x71, 0x6d, 0x67, 0x65, 0x4f, 0x49, 0x43, 0x3d, 0x3b, 0x35, 0x2b, 0x29,
@@ -121,6 +126,8 @@ export class Game {
   bonusThreshold: number = BONUS_THRESHOLDS[0];
   private bonusAwarded = false;
   gameOver = false;
+  /** Frames elapsed on the game-over screen without the player pressing start. */
+  idleFrames = 0;
 
   /** TIMING_VARIABLE ($425F); the original decrements, direction is irrelevant. */
   private frame = 0;
@@ -167,6 +174,7 @@ export class Game {
     this.lives = 3;
     this.bonusAwarded = false;
     this.gameOver = false;
+    this.idleFrames = 0;
     this.inflight.difficultyExtra = 0;
     this.playerState = PlayerState.Alive;
     this.playerY = PLAYER_SPAWN_Y;
@@ -198,7 +206,11 @@ export class Game {
 
     if (this.gameOver) {
       this.sound?.setSwarmLoop(false, 1);
-      if (input.start) this.reset();
+      if (input.start) {
+        this.reset();
+        return;
+      }
+      this.idleFrames++;
       this.swarm.update(this.frame, null);
       return;
     }
@@ -402,26 +414,29 @@ export class Game {
 
       this.bulletActive = false;
       const row = alien.indexInSwarm & 0x70;
-      this.inflight.kill(i);
 
       if (row === 0x70) {
-        // Flagship: the payout depends on how the convoy went.
+        // Flagship: the swarm is stunned and the payout depends on the convoy.
         this.flagshipHit = true;
-        this.shockCounter = 0x100;
+        this.shockCounter = 0xf0; // ALIENS_IN_SHOCK_COUNTER ($422C)
+
+        // FLAGSHIP_SCORE_FACTOR ($422D): the escort count, promoted to 3 only
+        // when two escorts flew and both were shot before the flagship ($1292).
         const escortsAlive =
           (this.inflight.slots[2]!.isActive ? 1 : 0) +
           (this.inflight.slots[3]!.isActive ? 1 : 0);
-        let scoreId: number;
-        if (this.escortsKilledBeforeFlagship >= 2) scoreId = 11; // 800
-        else if (this.escortsKilledBeforeFlagship === 1 && escortsAlive === 0) scoreId = 10; // 300
-        else if (escortsAlive === 0) scoreId = 9; // 200 (was alone)
-        else scoreId = 8; // 150
+        const escortCount = this.escortsKilledBeforeFlagship + escortsAlive;
+        const factor = escortCount === 2 && escortsAlive === 0 ? 3 : escortCount;
         this.escortsKilledBeforeFlagship = 0;
-        this.addScore(ALIEN_SCORES[scoreId]!);
+
+        // Point sprite $20..$23 hovers at the kill site for 50 frames.
+        this.inflight.kill(i, FLAGSHIP_POINT_SPRITE_BASE + factor);
+        this.addScore(FLAGSHIP_SCORES[factor]!);
         this.sound?.flagshipDeath();
       } else {
         // $125E: parameter 4 for blue, +1 per rank above.
         if (i === 2 || i === 3) this.escortsKilledBeforeFlagship++;
+        this.inflight.kill(i);
         const scoreId = row <= 0x40 ? 4 : row === 0x50 ? 5 : 6;
         this.addScore(ALIEN_SCORES[scoreId]!);
         this.sound?.alienDeath();

@@ -226,3 +226,28 @@ describe('a running game', () => {
     }
   });
 });
+
+describe('difficulty progression', () => {
+  it('raises DIFFICULTY_BASE by one per stage, capped at 7', () => {
+    const game = new Game();
+    expect(game.inflight.difficultyBase).toBe(1);
+    // Clear stages by wiping the swarm directly and letting checkStageComplete fire.
+    for (let stage = 1; stage <= 10; stage++) {
+      game.swarm.flags.fill(0);
+      game.inflight.reset();
+      game.step(IDLE);
+    }
+    expect(game.inflight.difficultyBase).toBe(7);
+  });
+
+  it('resets DIFFICULTY_EXTRA to 0 at the start of each stage', () => {
+    const game = new Game();
+    // Let some stage time pass so extra climbs.
+    for (let f = 0; f < 0x3c * 0x14 + 5; f++) game.step(IDLE);
+    expect(game.inflight.difficultyExtra).toBeGreaterThanOrEqual(1);
+    game.swarm.flags.fill(0);
+    game.inflight.reset();
+    game.step(IDLE);
+    expect(game.inflight.difficultyExtra).toBe(0);
+  });
+})

@@ -102,8 +102,8 @@ export class Swarm {
   scroll16 = 0;
 
   /** SWARM_SCROLL_MAX_EXTENTS ($4210): [leftLimit, rightLimit lsb]. */
-  private leftLimit = 0x22;
-  private rightLimit = -0x20;
+  leftLimit = 0x22;
+  rightLimit = -0x20;
 
   reset(): void {
     this.flags.fill(0);

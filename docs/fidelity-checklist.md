@@ -51,6 +51,10 @@ honest so nobody has to reverse-engineer this project to find out.
 | Colour codes and speeds per row (ALIEN_PARAMS_TABLE) | $1DD1 | `src/game/swarm.ts` |
 | HUD: red header/white scores, lives bottom-left, stage flags ($68 tens / $6C units) bottom-right | $2521, $214E | `src/game/game.ts` |
 | Attract cycle: score screen, SCORE ADVANCE TABLE (convoy charger + ranks), demo game; start begins play | SCRIPT_ONE $03D2 | `src/game/attract.ts` |
+| Player collision windows: enemy-bullet ($5/$B Y bands) and in-flight alien (narrow nose $15 / wide body $0F) | $0B8D, $12B6 | `src/game/game.ts` |
+| Attack flank from swarm scroll vs extents (within $1C), else random | $13F0 | `src/game/game.ts` |
+| HAVE_AGGRESSIVE_ALIENS set when 3 or fewer aliens remain | $16E7 | `src/game/game.ts` |
+| DIFFICULTY_BASE = player level (+1 per stage, cap 7); DIFFICULTY_EXTRA +1 per 1200 frames, reset per stage, -1 on death | $1655, $14E8, $1300 | `src/game/game.ts` |
 
 ## Recorded — real audio, not synthesis
 
@@ -64,20 +68,14 @@ playback rate with stage time.
 
 ## Approximated — structure right, constants tuned
 
-- **DIFFICULTY_BASE_VALUE's climb during a stage.** The increment site exists
-  ($1662) but its trigger cadence was not extracted; we step it every ~17 s.
 - **Attract mode** reproduces the visible cycle (score screen, score-advance
   table, demo game) but not the full 19-stage SCRIPT_ONE choreography: the
   "WE ARE THE GALAXIANS" scroll-in, the NAMCO logo page, and the exact
   convoy-charger blink/scroll are simplified, and the demo is driven by a
   simple threat-tracking AI rather than the ROM's scripted fake controller.
-- **Aggression flag** (HAVE_AGGRESSIVE_ALIENS): the setter was not located; we
-  raise it when the blue/purple rows are gone or ≤5 aliens remain.
-- **Flank choice** ($13F0 uses swarm geometry; we flip a coin periodically).
-- Player/alien and player/bullet contact windows (the originals exist at
-  $12B6/$0B8D but were not extracted; ±8..10 px used).
 - Two-player alternation, coin/credit handling and the DIP switch service menu
-  are not implemented; bonus-life threshold fixed at 7000.
+  are not implemented; the bonus-life threshold uses the default DIP (7000)
+  and is settable via `Game.bonusThreshold`.
 
 ## Known gaps
 

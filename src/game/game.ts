@@ -61,6 +61,12 @@ export const FLAGSHIP_SCORES = [150, 200, 300, 800] as const;
 /** Sprite code of the "150" points value; +factor selects 200/300/800 ($20-$23). */
 export const FLAGSHIP_POINT_SPRITE_BASE = 0x20;
 
+/**
+ * Frames between DIFFICULTY_EXTRA_VALUE steps: DIFFICULTY_COUNTER_1 ($3C = 60)
+ * times DIFFICULTY_COUNTER_2 ($14 = 20).
+ */
+const DIFFICULTY_EXTRA_PERIOD = 0x3c * 0x14;
+
 /** ALIEN_ATTACK_COUNTER_DEFAULT_VALUES ($15E3). */
 const ATTACK_COUNTER_DEFAULTS = [
   0x05, 0x2f, 0x43, 0x77, 0x71, 0x6d, 0x67, 0x65, 0x4f, 0x49, 0x43, 0x3d, 0x3b, 0x35, 0x2b, 0x29,
@@ -145,8 +151,10 @@ export class Game {
   /** Escorts killed before the flagship, for the convoy bonus. */
   private escortsKilledBeforeFlagship = 0;
 
-  /** Stage timer driving DIFFICULTY_BASE_VALUE's climb during a stage. */
+  /** Free-running stage timer, used only for the swarm-loop tempo. */
   private stageTimer = 0;
+  /** Countdown to the next DIFFICULTY_EXTRA_VALUE step ($3C x $14 frames). */
+  private difficultyExtraCounter = DIFFICULTY_EXTRA_PERIOD;
 
   sound: SoundSink | null = null;
   private divesActive = 0;
@@ -169,13 +177,15 @@ export class Game {
   }
 
   reset(): void {
+    // DIFFICULTY_BASE_VALUE ($421B) is the player level, 1 at the start; it
+    // climbs one per stage and is never reset until a new game.
+    this.inflight.difficultyBase = 1;
     this.startStage(1);
     this.score = 0;
     this.lives = 3;
     this.bonusAwarded = false;
     this.gameOver = false;
     this.idleFrames = 0;
-    this.inflight.difficultyExtra = 0;
     this.playerState = PlayerState.Alive;
     this.playerY = PLAYER_SPAWN_Y;
     this.sound?.gameStart();
@@ -185,7 +195,9 @@ export class Game {
     this.stage = stage;
     this.swarm.reset();
     this.inflight.reset();
-    this.inflight.difficultyBase = 1;
+    // DIFFICULTY_EXTRA_VALUE ($421A) resets to 0 at the start of each stage.
+    this.inflight.difficultyExtra = 0;
+    this.difficultyExtraCounter = DIFFICULTY_EXTRA_PERIOD;
     this.bulletActive = false;
     for (const b of this.enemyBullets) b.active = false;
     this.attackCounters = [...ATTACK_COUNTER_DEFAULTS];
@@ -215,13 +227,16 @@ export class Game {
       return;
     }
 
-    // DIFFICULTY_BASE_VALUE climbs as the stage drags on, capped at 7.
-    if (++this.stageTimer % 1024 === 0) {
-      this.inflight.difficultyBase = Math.min(7, this.inflight.difficultyBase + 1);
+    this.stageTimer++;
+    // DIFFICULTY_EXTRA_VALUE climbs the longer the stage runs -- COUNTER_1
+    // ($3C) x COUNTER_2 ($14) = 1200 frames per step, capped at 7 ($14FF).
+    if (--this.difficultyExtraCounter <= 0) {
+      this.difficultyExtraCounter = DIFFICULTY_EXTRA_PERIOD;
+      this.inflight.difficultyExtra = Math.min(7, this.inflight.difficultyExtra + 1);
     }
-    // Aggression sets in once the escorts' cover is gone.
-    this.inflight.aggressive =
-      !this.swarm.hasBlueOrPurple || this.swarm.aliveCount <= 5;
+    // HAVE_AGGRESSIVE_ALIENS ($4224, set at $16E7): the survivors turn
+    // extremely aggressive once three or fewer aliens remain in the swarm.
+    this.inflight.aggressive = this.swarm.aliveCount <= 3;
 
     this.updateSwarmSound();
     this.swarm.update(
@@ -343,15 +358,33 @@ export class Game {
    * The two attack directors: HANDLE_ALIEN_ATTACK's counter bank for lone
    * attackers, and UPDATE_ATTACK_COUNTERS' timer pair for flagship sorties.
    */
+  /**
+   * ALIENS_ATTACK_FROM_RIGHT_FLANK ($4215), from $13F0.
+   *
+   * The swarm's signed scroll ($420E) is compared against its current extents
+   * ($4210). Within $1C of the near extent, aliens attack from that flank;
+   * beyond it, the flank is a coin toss.
+   */
+  private chooseAttackFlank(): void {
+    const scroll = this.swarm.scroll16;
+    if (scroll < 0) {
+      // Swept toward the left extent.
+      if (byte(scroll - this.swarm.leftLimit) >= 0x1c) this.attackFromRight = Math.random() < 0.5;
+      else this.attackFromRight = false;
+    } else {
+      // Swept toward the right extent.
+      if (byte(this.swarm.rightLimit - scroll) >= 0x1c) this.attackFromRight = Math.random() < 0.5;
+      else this.attackFromRight = true;
+    }
+  }
+
   private updateAttackDirectors(): void {
     if (!this.playerSpawned || this.flagshipHit) return;
     if (this.swarm.aliveCount === 0) return;
 
-    // Choose a flank: the original leans toward the side with more cover and
-    // otherwise flips a coin ($13F0).
-    if ((this.frame & 0x3f) === 0) {
-      this.attackFromRight = Math.random() < 0.5;
-    }
+    // Choose a flank ($13F0): when the swarm has swept close to one of its
+    // scroll extents, aliens peel off from that side; otherwise pick at random.
+    if ((this.frame & 0x1f) === 0) this.chooseAttackFlank();
 
     // Lone attacker cadence.
     const decrements = Math.min(
@@ -478,23 +511,54 @@ export class Game {
     scratch.y = y;
   }
 
+  /**
+   * TEST_IF_ENEMY_BULLET_HIT_PLAYER ($0B8D), byte-exact.
+   *
+   * The ship is 32 pixels tall along the hardware X (vertical) axis, and its
+   * fixed vertical position is baked into the +$1F constant. Two Y windows: a
+   * wide one over the ship's body ($0B) and a narrow one at the near edge ($5).
+   */
   private enemyBulletsVsPlayer(): void {
     for (const b of this.enemyBullets) {
       if (!b.active) continue;
-      if (Math.abs(signed(b.x - PLAYER_X + 8)) > 8) continue;
-      if (Math.abs(signed(b.yh - this.playerY)) > 6) continue;
+      let d0 = byte(b.x + 0x1f);
+      const nearEdge = d0 < 5; // borrow from `sub 5`
+      d0 = byte(d0 - 5);
+      let hit: boolean;
+      if (nearEdge) {
+        hit = byte(this.playerY - b.yh + 2) < 5;
+      } else {
+        if (d0 >= 9) continue; // no borrow from `sub 9` -> miss
+        hit = byte(this.playerY - b.yh + 5) < 0x0b;
+      }
+      if (!hit) continue;
       b.active = false;
       this.killPlayer();
       return;
     }
   }
 
+  /**
+   * TEST_IF_INFLIGHT_ALIEN_HIT_PLAYER ($12B6), byte-exact.
+   *
+   * "The player ship is not rectangular. There are 2 widths depending on the
+   * part of the ship": the wide body window is $0F, the narrow nose is $15.
+   */
   private inflightVsPlayer(): void {
     for (let i = 1; i < INFLIGHT_SLOTS; i++) {
       const alien = this.inflight.slots[i]!;
       if (!alien.isActive) continue;
-      if (Math.abs(signed(alien.x - PLAYER_X + 8)) > 10) continue;
-      if (Math.abs(signed(alien.y - this.playerY)) > 10) continue;
+      let d0 = byte(alien.x + 0x21);
+      const bodyBand = d0 < 5; // borrow from `sub 5`
+      d0 = byte(d0 - 5);
+      let hit: boolean;
+      if (bodyBand) {
+        hit = byte(this.playerY - alien.y + 7) < 0x0f;
+      } else {
+        if (d0 >= 0x0c) continue; // no borrow from `sub $0C` -> miss
+        hit = byte(this.playerY - alien.y + 0x0a) < 0x15;
+      }
+      if (!hit) continue;
       this.inflight.kill(i);
       this.killPlayer();
       return;
@@ -525,8 +589,10 @@ export class Game {
 
   private checkStageComplete(): void {
     if (this.swarm.aliveCount > 0 || this.inflight.inFlightCount > 0) return;
-    // DIFFICULTY_EXTRA_VALUE rises on stage completion, capped at 7.
-    this.inflight.difficultyExtra = Math.min(7, this.inflight.difficultyExtra + 1);
+    // On completing a stage ($1655): the player level and DIFFICULTY_BASE_VALUE
+    // both climb by one (capped at 7), and DIFFICULTY_EXTRA_VALUE resets in
+    // startStage.
+    this.inflight.difficultyBase = Math.min(7, this.inflight.difficultyBase + 1);
     this.startStage(this.stage + 1);
   }
 

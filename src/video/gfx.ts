@@ -472,9 +472,16 @@ const INFLIGHT_FLAGSHIP: string[] = [
   '.......11.......',
 ];
 
+/** Supersampling factor used when rotating sprite art. */
+const ROTATE_OVERSAMPLE = 4;
+
 /**
- * Rotate a square bitmap about its centre by `deg` degrees, sampling from the
- * source (inverse mapping) so no destination pixel is left unwritten.
+ * Rotate a square bitmap about its centre.
+ *
+ * Rotating 16x16 pixel art directly shreds it -- thin features fall between
+ * sample points and the alien turns into a blob. Instead we sample at 4x in
+ * each axis and resolve each destination pixel by majority vote among its 16
+ * subsamples, which keeps the silhouette readable at every angle.
  */
 function rotateBitmap(src: Bitmap, size: number, deg: number): Bitmap {
   const out = new Uint8Array(size * size);
@@ -482,15 +489,29 @@ function rotateBitmap(src: Bitmap, size: number, deg: number): Bitmap {
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   const c = (size - 1) / 2;
+  const n = ROTATE_OVERSAMPLE;
+  const votes = new Uint8Array(4);
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const dx = x - c;
-      const dy = y - c;
-      const sx = Math.round(c + dx * cos + dy * sin);
-      const sy = Math.round(c - dx * sin + dy * cos);
-      if (sx >= 0 && sx < size && sy >= 0 && sy < size) {
-        out[y * size + x] = src[sy * size + sx]!;
+      votes.fill(0);
+      for (let sy = 0; sy < n; sy++) {
+        for (let sx = 0; sx < n; sx++) {
+          const fx = x + (sx + 0.5) / n - 0.5 - c;
+          const fy = y + (sy + 0.5) / n - 0.5 - c;
+          const ux = Math.round(c + fx * cos + fy * sin);
+          const uy = Math.round(c - fx * sin + fy * cos);
+          const pen = ux >= 0 && ux < size && uy >= 0 && uy < size ? src[uy * size + ux]! : 0;
+          votes[pen] = votes[pen]! + 1;
+        }
       }
+      // Any non-transparent majority wins over transparency, so the shape does
+      // not erode at the edges as it turns.
+      const opaque = votes[1]! + votes[2]! + votes[3]!;
+      if (opaque * 2 < n * n) continue;
+      let best = 1;
+      for (let pen = 2; pen <= 3; pen++) if (votes[pen]! > votes[best]!) best = pen;
+      out[y * size + x] = best;
     }
   }
   return out;

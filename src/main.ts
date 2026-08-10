@@ -4,7 +4,8 @@ import { Starfield } from './video/starfield';
 import { Renderer } from './video/renderer';
 import { buildGfx } from './video/gfx';
 import { VideoHardware } from './video/hardware';
-import { Swarm } from './game/swarm';
+import { Game } from './game/game';
+import { Input } from './input';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
@@ -14,15 +15,17 @@ const gfx = buildGfx();
 const renderer = new Renderer(canvas);
 const starfield = new Starfield(palette);
 const video = new VideoHardware(palette, gfx, starfield);
-const swarm = new Swarm();
+const game = new Game();
+const input = new Input();
 
+input.attach();
+input.attachTouch(stage);
 video.starsEnabled = true; // $7004
-swarm.reset();
 
 const clock = new FrameClock(() => {
   starfield.advanceFrame();
-  swarm.update();
-  swarm.draw(video.videoram, video.objram);
+  game.step(input.state);
+  game.render(video.videoram, video.objram);
   video.draw(renderer.frame);
   renderer.present();
 });
@@ -38,6 +41,7 @@ clock.start();
   starfield,
   renderer,
   video,
-  swarm,
+  game,
+  input,
   clock,
 };

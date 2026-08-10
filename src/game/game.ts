@@ -24,7 +24,25 @@ import {
   charOrdinal,
 } from '../video/gfx';
 import { SPRITE_BASE, BULLET_BASE } from '../video/hardware';
+import { SFX_ALIEN_DEATH, SFX_FLAGSHIP_DEATH } from '../audio/engine';
 import type { InputState } from '../input';
+
+/**
+ * Sound hooks, named after the board's control lines rather than after game
+ * events, so the game drives the audio the way the Z80 drove the sound section.
+ */
+export interface SoundSink {
+  /** The FIRE line. */
+  fire(): void;
+  /** The HIT line. */
+  hit(): void;
+  /** Start one of the ROM pitch sequences. */
+  playSequence(seq: readonly number[]): void;
+  /** FS1..FS3, the three background 555 astables. */
+  setBackgroundVoice(index: 0 | 1 | 2, on: boolean): void;
+  /** The 4-bit background LFO DAC at $6004-$6007. */
+  setBackgroundFrequency(value: number): void;
+}
 
 /** Character cell the player ship is plotted at ($51FC). */
 const SHIP_CHAR_ADDR = 0x1fc;
@@ -86,6 +104,9 @@ export class Game {
   private launchTimer = 0;
   private rngState = 0x1234;
 
+  /** Optional sound section; the game runs silently without one. */
+  sound: SoundSink | null = null;
+
   /** Deterministic PRNG so behaviour is reproducible in tests. */
   private rng = (): number => {
     this.rngState = (this.rngState * 1103515245 + 12345) & 0x7fffffff;
@@ -130,6 +151,7 @@ export class Game {
     }
 
     this.swarm.update();
+    this.updateBackgroundHum();
     this.updatePlayer(input);
     this.updateBullet();
     this.updateEnemyBullets();
@@ -138,6 +160,34 @@ export class Game {
     this.checkCollisions();
     this.checkStageComplete();
   }
+
+  /**
+   * The background drone climbs as the formation thins out.
+   *
+   * The original writes a 4-bit value to $6004-$6007 which sets a 555's
+   * frequency, and gates three more 555s with FS1..FS3. Fewer aliens means a
+   * higher value and more voices, which is the rising tension you hear.
+   */
+  private updateBackgroundHum(): void {
+    if (!this.sound) return;
+    const alive = this.swarm.aliveCount;
+    const level = Math.max(0, Math.min(15, 15 - Math.floor((alive * 15) / 46)));
+    if (level !== this.lastHumLevel) {
+      this.lastHumLevel = level;
+      this.sound.setBackgroundFrequency(level);
+    }
+    const playing = this.playerState === PlayerState.Alive && !this.gameOver;
+    for (let v = 0; v < 3; v++) {
+      const on = playing && level >= v * 5;
+      if (on !== this.humVoices[v]) {
+        this.humVoices[v] = on;
+        this.sound.setBackgroundVoice(v as 0 | 1 | 2, on);
+      }
+    }
+  }
+
+  private lastHumLevel = -1;
+  private humVoices = [false, false, false];
 
   private updatePlayer(input: InputState): void {
     if (this.playerState === PlayerState.Exploding) {
@@ -172,6 +222,7 @@ export class Game {
       this.bulletActive = true;
       this.bulletX = this.playerHardwareX - 8;
       this.bulletY = this.playerHardwareY;
+      this.sound?.fire();
     }
     this.firePressed = input.fire;
   }
@@ -229,9 +280,11 @@ export class Game {
         const alien = this.inflight.slots[i]!;
         if (!alien.isActive) continue;
         if (Math.abs(alien.x - this.bulletX) < 10 && Math.abs(((alien.y - this.bulletY + 128) & 0xff) - 128) < 10) {
+          const isFlagship = alien.animFrameStartCode !== 0;
           alien.isActive = false;
           this.bulletActive = false;
           this.addScore(this.scoreForInflight(i));
+          this.sound?.playSequence(isFlagship ? SFX_FLAGSHIP_DEATH : SFX_ALIEN_DEATH);
           break;
         }
       }
@@ -244,6 +297,9 @@ export class Game {
         this.swarm.remove(hit.row, hit.col);
         this.bulletActive = false;
         this.addScore(hit.kind === 'flagship' ? ALIEN_SCORES[7]! : ALIEN_SCORES[0]!);
+        this.sound?.playSequence(
+          hit.kind === 'flagship' ? SFX_FLAGSHIP_DEATH : SFX_ALIEN_DEATH,
+        );
       }
     }
 
@@ -305,6 +361,7 @@ export class Game {
   }
 
   private killPlayer(): void {
+    this.sound?.hit();
     this.playerState = PlayerState.Exploding;
     this.explosionCounter = 8;
     this.explosionFrame = 0;

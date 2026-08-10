@@ -26,10 +26,42 @@
         image-rendering: pixelated;
         background: #000;
       }
+      #overlay {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        gap: 1.5rem;
+        align-content: center;
+        color: #fff;
+        font: 500 0.9rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.16em;
+        text-align: center;
+        background: rgb(0 0 0 / 0.72);
+        cursor: pointer;
+      }
+      #overlay[hidden] {
+        display: none;
+      }
+      #overlay b {
+        font-size: 1.25rem;
+        letter-spacing: 0.3em;
+        color: #ffd83d;
+      }
+      #overlay span {
+        color: #9aa0a6;
+      }
     </style>
   </head>
   <body>
     <div id="stage"><canvas id="screen"></canvas></div>
+    <div id="overlay">
+      <b>GALAXIAN</b>
+      <div>
+        PRESS ANY KEY TO START<br />
+        <span>&larr; &rarr; MOVE &nbsp;&nbsp; SPACE FIRE</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

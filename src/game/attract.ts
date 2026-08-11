@@ -36,6 +36,7 @@ import { INFLIGHT_FLAGSHIP_OFFSET } from '../video/gfx';
 import {
   printText,
   textCol,
+  scoreText,
   bonusGalaxipText,
   TEXT_GAME_OVER,
   TEXT_PUSH_START,
@@ -340,8 +341,9 @@ export class Attract {
     write(26, 0, '1UP');
     this.setColor(objram, TEXT_HIGH_SCORE, COLOR_CODE_TEXT_RED);
     printText(videoram, TEXT_HIGH_SCORE);
-    write(25, 1, '     00');
-    write(17, 1, this.highScore.toString().padStart(6, '0').replace(/^00/, '  '));
+    // Score fields at $5381 / $5241, with the ROM's leading-zero blanking.
+    write(28, 1, scoreText(0));
+    write(18, 1, scoreText(this.highScore));
   }
 
   /** CREDIT n (or FREE PLAY) at the bottom, from the ROM's own strings. */

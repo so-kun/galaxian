@@ -160,6 +160,18 @@ describe('slot allocation', () => {
   });
 });
 
+describe('score text', () => {
+  it('blanks up to four leading zeros, as PLOT_SCORE_CHARACTERS does', async () => {
+    const { scoreText } = await import('../src/game/romtext');
+    expect(scoreText(0)).toBe('    00');
+    expect(scoreText(30)).toBe('    30');
+    expect(scoreText(150)).toBe('   150');
+    expect(scoreText(7070)).toBe('  7070');
+    expect(scoreText(12340)).toBe(' 12340');
+    expect(scoreText(999990)).toBe('999990');
+  });
+});
+
 describe('swarm-alien explosion', () => {
   it('plays on the scratch slot and expires after its countdown', () => {
     const swarm = new Swarm();
@@ -248,11 +260,14 @@ describe('difficulty progression', () => {
   it('raises DIFFICULTY_BASE by one per stage, capped at 7', () => {
     const game = new Game();
     expect(game.inflight.difficultyBase).toBe(1);
-    // Clear stages by wiping the swarm directly and letting checkStageComplete fire.
+    // Clear stages by wiping the swarm directly; the next stage begins only
+    // after HANDLE_LEVEL_COMPLETE's 256-frame pause ($1637).
     for (let stage = 1; stage <= 10; stage++) {
+      game.lives = 3; // player deaths must not end the game mid-test
       game.swarm.flags.fill(0);
       game.inflight.reset();
-      game.step(IDLE);
+      let n = 0;
+      while (game.stage === stage && n++ < 3000) game.step(IDLE);
     }
     expect(game.inflight.difficultyBase).toBe(7);
   });
@@ -262,9 +277,27 @@ describe('difficulty progression', () => {
     // Let some stage time pass so extra climbs.
     for (let f = 0; f < 0x3c * 0x14 + 5; f++) game.step(IDLE);
     expect(game.inflight.difficultyExtra).toBeGreaterThanOrEqual(1);
+    game.lives = 3;
     game.swarm.flags.fill(0);
     game.inflight.reset();
-    game.step(IDLE);
+    let frames = 0;
+    while (game.stage === 1 && frames++ < 3000) game.step(IDLE);
+    expect(game.stage).toBe(2);
+    // The pause before the new swarm is at least 256 frames long.
+    expect(frames).toBeGreaterThanOrEqual(256);
     expect(game.inflight.difficultyExtra).toBe(0);
+  });
+
+  it('waits 256 frames between clearing a stage and the next swarm', () => {
+    const game = new Game();
+    game.swarm.flags.fill(0);
+    game.inflight.reset();
+    game.step(IDLE); // level detected complete here
+    for (let f = 0; f < 250; f++) game.step(IDLE);
+    expect(game.stage).toBe(1); // still in the pause
+    expect(game.swarm.aliveCount).toBe(0);
+    for (let f = 0; f < 10; f++) game.step(IDLE);
+    expect(game.stage).toBe(2);
+    expect(game.swarm.aliveCount).toBe(46);
   });
 })

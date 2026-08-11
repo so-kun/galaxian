@@ -92,3 +92,22 @@ export function printText(videoram: Uint8Array, text: RomText, reveal?: number):
 export function textCol(text: RomText): number {
   return (text.addr - 0x5000) & 0x1f;
 }
+
+/**
+ * A score as PLOT_SCORE_CHARACTERS ($2261) shows it: six digits with up to
+ * four leading zeros blanked, so a zero score reads "00".
+ */
+export function scoreText(score: number): string {
+  const s = (score % 1000000).toString().padStart(6, '0');
+  let out = '';
+  let blanking = true;
+  for (let i = 0; i < 6; i++) {
+    if (blanking && i < 4 && s[i] === '0') {
+      out += ' ';
+    } else {
+      blanking = false;
+      out += s[i];
+    }
+  }
+  return out;
+}

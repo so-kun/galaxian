@@ -35,6 +35,7 @@ import {
   COLOR_CODE_EXPLOSION,
 } from '../video/palette';
 import { SPRITE_BASE, BULLET_BASE } from '../video/hardware';
+import { printText, textCol, scoreText, TEXT_GAME_OVER } from './romtext';
 import type { InputState } from '../input';
 
 /** Sound interface, named for what the board's sound lines actually do. */
@@ -159,8 +160,9 @@ export class Game {
   /** IS_FLAGSHIP_HIT ($422B) and ALIENS_IN_SHOCK_COUNTER ($422C). */
   private flagshipHit = false;
   private shockCounter = 0;
-  /** Escorts killed before the flagship, for the convoy bonus. */
-  private escortsKilledBeforeFlagship = 0;
+  /** LEVEL_COMPLETE ($4222) and NEXT_LEVEL_DELAY_COUNTER ($4223). */
+  private levelComplete = false;
+  private nextLevelDelay = 0;
 
   /** Free-running stage timer, used only for the swarm-loop tempo. */
   private stageTimer = 0;
@@ -487,14 +489,13 @@ export class Game {
         this.flagshipHit = true;
         this.shockCounter = 0xf0; // ALIENS_IN_SHOCK_COUNTER ($422C)
 
-        // FLAGSHIP_SCORE_FACTOR ($422D): the escort count, promoted to 3 only
-        // when two escorts flew and both were shot before the flagship ($1292).
-        const escortsAlive =
-          (this.inflight.slots[2]!.isActive ? 1 : 0) +
-          (this.inflight.slots[3]!.isActive ? 1 : 0);
-        const escortCount = this.escortsKilledBeforeFlagship + escortsAlive;
-        const factor = escortCount === 2 && escortsAlive === 0 ? 3 : escortCount;
-        this.escortsKilledBeforeFlagship = 0;
+        // FLAGSHIP_SCORE_FACTOR ($422D) is FLAGSHIP_ESCORT_COUNT itself,
+        // promoted to 3 only when the convoy set out with two escorts and
+        // both are already gone when the flagship is hit ($1282, $1292).
+        const escorts = this.inflight.flagshipEscortCount;
+        const bothEscortsGone =
+          !this.inflight.slots[2]!.isActive && !this.inflight.slots[3]!.isActive;
+        const factor = escorts === 2 && bothEscortsGone ? 3 : escorts;
 
         // Point sprite $20..$23 hovers at the kill site for 50 frames.
         this.inflight.kill(i, FLAGSHIP_POINT_SPRITE_BASE + factor);
@@ -502,7 +503,6 @@ export class Game {
         this.sound?.flagshipDeath();
       } else {
         // $125E: parameter 4 for blue, +1 per rank above.
-        if (i === 2 || i === 3) this.escortsKilledBeforeFlagship++;
         this.inflight.kill(i);
         const scoreId = row <= 0x40 ? 4 : row === 0x50 ? 5 : 6;
         this.addScore(ALIEN_SCORES[scoreId]!);
@@ -626,12 +626,25 @@ export class Game {
   }
 
   private checkStageComplete(): void {
+    // HANDLE_LEVEL_COMPLETE ($1637): once the level completes, the delay
+    // counter starts at 0 and decrements through a full byte wrap, so the
+    // next swarm appears only after a 256-frame pause.
+    if (this.levelComplete) {
+      this.nextLevelDelay = byte(this.nextLevelDelay - 1);
+      if (this.nextLevelDelay !== 0) return;
+      this.levelComplete = false;
+      // On completing a stage ($1655): the player level and
+      // DIFFICULTY_BASE_VALUE both climb by one (capped at 7), and
+      // DIFFICULTY_EXTRA_VALUE resets in startStage.
+      this.inflight.difficultyBase = Math.min(7, this.inflight.difficultyBase + 1);
+      this.startStage(this.stage + 1);
+      return;
+    }
+    // CHECK_IF_LEVEL_IS_COMPLETE ($1621): the swarm is empty and nothing is
+    // in flight or dying.
     if (this.swarm.aliveCount > 0 || this.inflight.inFlightCount > 0) return;
-    // On completing a stage ($1655): the player level and DIFFICULTY_BASE_VALUE
-    // both climb by one (capped at 7), and DIFFICULTY_EXTRA_VALUE resets in
-    // startStage.
-    this.inflight.difficultyBase = Math.min(7, this.inflight.difficultyBase + 1);
-    this.startStage(this.stage + 1);
+    this.levelComplete = true;
+    this.nextLevelDelay = 0;
   }
 
   // -------------------------------------------------------------------------
@@ -737,16 +750,18 @@ export class Game {
     objram[31 * 2 + 1] = COLOR_CODE_PLAYER;
     objram[31 * 2] = 0;
 
-    // Header (charCol 0 = top row) and scores below it.
+    // Header labels and scores at the ROM's own addresses: "1UP" at $5340,
+    // HIGH SCORE at $5280, the score fields at $5381 and $5241.
     write(26, 0, '1UP');
-    write(19, 0, 'HIGH SCORE');
-    write(25, 1, this.score.toString().padStart(6, '0').replace(/^00/, '  '));
-    write(17, 1, this.highScore.toString().padStart(6, '0').replace(/^00/, '  '));
+    write(20, 0, 'HIGH SCORE');
+    write(28, 1, scoreText(this.score));
+    write(18, 1, scoreText(this.highScore));
 
     if (this.gameOver) {
-      objram[15 * 2 + 1] = COLOR_CODE_TEXT_RED;
-      objram[15 * 2] = 0;
-      write(16, 15, 'GAME OVER');
+      const col = textCol(TEXT_GAME_OVER);
+      objram[col * 2 + 1] = COLOR_CODE_TEXT_RED;
+      objram[col * 2] = 0;
+      printText(videoram, TEXT_GAME_OVER);
     }
 
     // A 2x2 block, PLOT_CHARACTERS_2_BY_2_ASCENDING order: base and base+1 on

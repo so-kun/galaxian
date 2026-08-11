@@ -15,7 +15,7 @@ import { Attract } from './attract';
 import type { SoundSink } from './game';
 import { charOrdinal, CHAR_SPACE } from '../video/gfx';
 import { COLOR_CODE_TEXT_RED, COLOR_CODE_TEXT_WHITE } from '../video/palette';
-import { printText, textCol, TEXT_PLAYER_ONE, TEXT_PLAYER_TWO } from './romtext';
+import { printText, textCol, scoreText, TEXT_PLAYER_ONE, TEXT_PLAYER_TWO } from './romtext';
 import { DEFAULT_DIP, type DipSettings } from './dip';
 import type { InputState } from '../input';
 
@@ -234,15 +234,14 @@ export class Session {
   private drawTwoPlayerHud(videoram: Uint8Array, objram: Uint8Array): void {
     const p1 = this.players[0]!;
     const p2 = this.players[1]!;
-    // 2UP label and score on the header's far side.
-    this.text(videoram, objram, 8, 0, '2UP', this.active === 1 ? COLOR_CODE_TEXT_RED : COLOR_CODE_TEXT_WHITE);
-    this.text(videoram, objram, 7, 1, p2.score.toString().padStart(6, '0').replace(/^00/, '  '), COLOR_CODE_TEXT_WHITE);
-    // Dim the inactive 1UP by leaving the game's own red header; nothing to do
-    // beyond ensuring player 2's score is shown. Player 1's score is already
-    // drawn by the active game when active === 0; when active === 1 we draw it.
+    // 2UP label at $5140 and its score field at $5121, per the ROM.
+    this.text(videoram, objram, 10, 0, '2UP', this.active === 1 ? COLOR_CODE_TEXT_RED : COLOR_CODE_TEXT_WHITE);
+    this.text(videoram, objram, 9, 1, scoreText(p2.score), COLOR_CODE_TEXT_WHITE);
+    // Player 1's score is already drawn by the active game when active === 0;
+    // when active === 1 the game draws player 2's numbers, so restate 1UP.
     if (this.active === 1) {
       this.text(videoram, objram, 26, 0, '1UP', COLOR_CODE_TEXT_WHITE);
-      this.text(videoram, objram, 25, 1, p1.score.toString().padStart(6, '0').replace(/^00/, '  '), COLOR_CODE_TEXT_WHITE);
+      this.text(videoram, objram, 28, 1, scoreText(p1.score), COLOR_CODE_TEXT_WHITE);
     }
   }
 

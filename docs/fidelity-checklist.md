@@ -36,7 +36,7 @@ honest so nobody has to reverse-engineer this project to find out.
 | **The dive weave: fixed-point harmonic oscillator (H += 2L/256, L −= 2H/256), byte-exact with the $80 overflow guards** | $116B | `src/game/inflight.ts` |
 | Dive amplitude: clamp(±(offset/2+16), 48..112); escorts copy the flagship's | $0DDD | `src/game/inflight.ts` |
 | The 16-stage StageOfLife machine incl. near-bottom speed-up, sortie counting, aggressive re-entry, loop-the-loop and its handoff | $0CD6 table | `src/game/inflight.ts` |
-| Flagship escape/carry-over rules; escort counting | $0EDA | `src/game/inflight.ts` |
+| Flagship escape/carry-over rules; FLAGSHIP_ESCORT_COUNT set as the flagship packs its bags and recounted from the live escorts each time it reaches the bottom, so a spent convoy stops paying the bonus | $0D58, $0EDA, $0EF2 | `src/game/inflight.ts` |
 | Slot allocation (scratch/flagship/2 escorts/4 attackers); attacker count min(3,(base+extra)/2)+1 | $42B0, $1352 | `src/game/inflight.ts` |
 | Firing gate: fixed altitudes X = $9D − $19k, more as row pairs empty | $0E54, $15F4 | `src/game/inflight.ts` |
 | Enemy bullets: 14 slots, 2 px/frame fall, tangent+rand aim in 16-bit fixed point, 2-per-shell multiplexing | $0A80, $1200 | `src/game/game.ts` |
@@ -45,8 +45,10 @@ honest so nobody has to reverse-engineer this project to find out.
 | Hit window vs in-flight aliens: X∈[−2,+4), Y∈[−5,+7) | $123F | `src/game/game.ts` |
 | Attack cadence: counter bank with the $15E3 defaults; flagship sortie timer pair | $151E, $155F | `src/game/game.ts` |
 | Flagship shock: swarm freezes when a flagship is hit | $1690 | `src/game/game.ts` |
-| Scores: ALIEN_SCORE_TABLE incl. convoy 150/200/300/800 by escorts-killed-first | $22D0, $1273 | `src/game/game.ts` |
-| Flagship points sprite ($20-$23) held at the kill site for 50 frames after the explosion | $112D, $039A | `src/game/inflight.ts`, `game.ts` |
+| Scores: ALIEN_SCORE_TABLE; FLAGSHIP_SCORE_FACTOR is the escort count, promoted to 3 (800) only when the convoy set out with two escorts and both are gone when the flagship is hit | $22D0, $1273, $1282, $1292 | `src/game/game.ts` |
+| Flagship points sprite ($20-$23) held at the kill site for 50 frames after the explosion, in the dying colour 7 like the explosion frames | $112D, $039A, $0C9F | `src/game/inflight.ts`, `game.ts` |
+| Score display: six digits with up to four leading zeros blanked, at the ROM's own fields ($5381 / $5241 / $5121) | $2261, $2279 | `src/game/romtext.ts` |
+| Level complete: detected when the swarm, the in-flight slots and the enemy bullets are all empty, then a full 256-frame pause before the next swarm | $1621, $1637 | `src/game/game.ts` |
 | Dying reduces DIFFICULTY_EXTRA by one | $1300 | `src/game/game.ts` |
 | Colour codes and speeds per row (ALIEN_PARAMS_TABLE) | $1DD1 | `src/game/swarm.ts` |
 | HUD: red header/white scores, lives bottom-left, stage flags ($68 tens / $6C units) bottom-right | $2521, $214E | `src/game/game.ts` |

@@ -23,7 +23,7 @@
 
 import { ARC_TABLE, calculateTangent, spriteForHeading } from './arc';
 import { ALIEN_EXPLOSION_SPRITE } from '../video/gfx';
-import { COLOR_CODE_EXPLOSION, COLOR_CODE_TEXT_WHITE } from '../video/palette';
+import { COLOR_CODE_EXPLOSION } from '../video/palette';
 import type { Swarm } from './swarm';
 import { SWARM_LAYOUT, swarmIndex, rowAnchorX, colAnchorY, rowByIndex } from './swarm';
 import { INFLIGHT_FLAGSHIP_OFFSET } from '../video/gfx';
@@ -147,6 +147,7 @@ export class InflightAliens {
   reset(): void {
     for (let i = 0; i < INFLIGHT_SLOTS; i++) this.slots[i] = emptyAlien();
     this.aggressive = false;
+    this.flagshipEscortCount = 0;
   }
 
   get inFlightCount(): number {
@@ -246,6 +247,9 @@ export class InflightAliens {
     return false;
   }
 
+  /** FLAGSHIP_ESCORT_COUNT ($422A): escorts that launched with the flagship. */
+  flagshipEscortCount = 0;
+
   /** "We only want 2 red aliens as an escort" ($1483). */
   private launchEscorts(swarm: Swarm, flagCol: number, clockwise: boolean): void {
     const redRow = SWARM_LAYOUT[1]!;
@@ -262,6 +266,11 @@ export class InflightAliens {
       this.initInflight(slot, swarm, 6, col, clockwise);
       placed++;
     }
+    // $0D58 counts the escort slots' IsActive flags as the flagship packs its
+    // bags, which is what FLAGSHIP_ESCORT_COUNT ($422A) holds from here on.
+    this.flagshipEscortCount =
+      (this.slots[SLOT_ESCORT_FIRST]!.isActive ? 1 : 0) +
+      (this.slots[SLOT_ESCORT_FIRST + 1]!.isActive ? 1 : 0);
   }
 
   private findFlankAlien(
@@ -618,15 +627,19 @@ export class InflightAliens {
 
     const row = alien.indexInSwarm & 0x70;
     if (row === 0x70) {
-      // Flagship: no escorts left means it escapes the stage entirely.
-      const escorts =
-        (this.slots[2]!.isActive ? 1 : 0) + (this.slots[3]!.isActive ? 1 : 0);
-      if (escorts === 0) {
+      // INFLIGHT_ALIEN_FLAGSHIP_REACHED_BOTTOM_OF_SCREEN ($0EDA): a flagship
+      // whose escort count has fallen to zero flees the stage. Otherwise the
+      // *live* escorts are recounted into FLAGSHIP_ESCORT_COUNT ($0EF2) and
+      // the flagship comes round again -- so a convoy whose escorts were both
+      // shot is worth 800 only until the flagship laps the screen.
+      if (this.flagshipEscortCount === 0) {
         alien.isActive = false;
         this.events.onDiveEnd?.();
         this.events.onFlagshipEscape?.();
         return;
       }
+      this.flagshipEscortCount =
+        (this.slots[2]!.isActive ? 1 : 0) + (this.slots[3]!.isActive ? 1 : 0);
     }
 
     if (!playerSpawned) {
@@ -729,21 +742,24 @@ export class InflightAliens {
       const alien = this.slots[slot]!;
       const base = spriteBase + slot * 4;
       if (alien.isDying) {
-        // dyingAnimFrame 0/1 = the two explosion frames; 2 = points value.
+        // $0C9F: a dying alien keeps colour 7 throughout, explosion frames
+        // and points value alike. dyingAnimFrame 0/1 are the two explosion
+        // frames; 2 means the flagship's points value is being held.
         const showingPoints = alien.dyingAnimFrame === 2;
         objram[base] = byte(~alien.y - 8);
         objram[base + 1] = showingPoints
           ? alien.pointSprite
           : ALIEN_EXPLOSION_SPRITE + (alien.dyingAnimFrame & 1);
-        objram[base + 2] = showingPoints ? COLOR_CODE_TEXT_WHITE : COLOR_CODE_EXPLOSION;
+        objram[base + 2] = COLOR_CODE_EXPLOSION;
         objram[base + 3] = byte(alien.x - 8);
         continue;
       }
       if (!alien.isActive) {
-        objram[base] = 0;
+        // $0CBA parks a finished alien's sprite off screen at $F8/$F8.
+        objram[base] = 0xf8;
         objram[base + 1] = 0;
         objram[base + 2] = 0;
-        objram[base + 3] = 0;
+        objram[base + 3] = 0xf8;
         continue;
       }
       const { code, flipX, flipY } = spriteForHeading(

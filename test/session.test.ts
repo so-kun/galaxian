@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { Session } from '../src/game/session';
+import { Session, BOOT_FRAMES } from '../src/game/session';
 import type { InputState } from '../src/input';
 
 const IDLE: InputState = {
@@ -27,9 +27,43 @@ function coin(s: Session): void {
   s.update(IDLE);
 }
 
+/** A session past its power-on sequence, ready to take coins. */
+function bootedSession(): Session {
+  const s = new Session();
+  for (let i = 0; i < BOOT_FRAMES; i++) s.update(IDLE);
+  return s;
+}
+
+describe('power-on sequence', () => {
+  it('shows the RAM-test pattern, ignores coins, then reaches attract', () => {
+    const s = new Session();
+    const videoram = new Uint8Array(0x400);
+    const objram = new Uint8Array(0x100);
+
+    // During the character-RAM test the four 256-byte pages carry the
+    // seeded pattern ($1AC5: pass + $2F, one higher per page), the
+    // attributes are zeroed and the stars are off.
+    s.update({ ...IDLE, coin: true });
+    s.render(videoram, objram);
+    expect(videoram[0x000]).toBe(0x20 - 1 + 0x2f);
+    expect(videoram[0x100]).toBe(0x20 - 1 + 0x30);
+    expect(objram[1]).toBe(0);
+    expect(s.starsEnabled).toBe(false);
+
+    // Coins are ignored throughout the self test.
+    for (let i = 0; i < BOOT_FRAMES; i++) s.update({ ...IDLE, coin: true });
+    expect(s.credits).toBe(0);
+    expect(s.starsEnabled).toBe(true);
+
+    // Attract is up afterwards: the header's HIGH SCORE from the ROM table.
+    s.render(videoram, objram);
+    expect(videoram[0x280]).not.toBe(0x10);
+  });
+});
+
 describe('cabinet session', () => {
   it('accrues one credit per coin press, not per held frame', () => {
-    const s = new Session();
+    const s = bootedSession();
     expect(s.credits).toBe(0);
     // A single continuous hold is one coin, however long it lasts.
     for (let i = 0; i < 10; i++) s.update({ ...IDLE, coin: true });
@@ -41,7 +75,7 @@ describe('cabinet session', () => {
   });
 
   it('will not start without enough credits', () => {
-    const s = new Session();
+    const s = bootedSession();
     s.update({ ...IDLE, start: true });
     expect(peek(s).mode).toBe(0); // still attract
     coin(s);
@@ -50,7 +84,7 @@ describe('cabinet session', () => {
   });
 
   it('a one-player start costs one credit and auto-respawns', () => {
-    const s = new Session();
+    const s = bootedSession();
     coin(s);
     coin(s);
     s.update({ ...IDLE, start: true });
@@ -62,7 +96,7 @@ describe('cabinet session', () => {
   });
 
   it('a two-player start costs two credits and sets up both players', () => {
-    const s = new Session();
+    const s = bootedSession();
     coin(s);
     coin(s);
     s.update({ ...IDLE, start2: true });
@@ -77,7 +111,7 @@ describe('cabinet session', () => {
   });
 
   it('hands control to the other player when the active one dies', () => {
-    const s = new Session();
+    const s = bootedSession();
     coin(s);
     coin(s);
     s.update({ ...IDLE, start2: true });

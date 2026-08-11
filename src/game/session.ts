@@ -25,10 +25,20 @@ const BANNER_FRAMES = 130;
 /** Idle frames on a game-over screen before dropping back to attract. */
 const ATTRACT_IDLE = 240;
 
+/** $1AC5: the character-RAM self test, one write+verify pass per frame. */
+const BOOT_TEST_FRAMES = 32;
+/** $1B70: screen cleared for the ROM checksum, before the stars switch on. */
+const BOOT_BLANK_FRAMES = 2;
+/** SCRIPT_ZERO ($00E6): the 32-row screen wipe, one row per frame. */
+const BOOT_WIPE_FRAMES = 32;
+/** Total power-on sequence length before the attract cycle begins. */
+export const BOOT_FRAMES = BOOT_TEST_FRAMES + BOOT_BLANK_FRAMES + BOOT_WIPE_FRAMES;
+
 const enum Mode {
   Attract,
   Banner,
   Playing,
+  Boot,
 }
 
 export class Session {
@@ -36,7 +46,8 @@ export class Session {
   sound: SoundSink | null = null;
   dip: DipSettings = { ...DEFAULT_DIP };
 
-  private mode = Mode.Attract;
+  private mode = Mode.Boot;
+  private bootTimer = 0;
   private readonly attract = new Attract();
   private players: Game[] = [];
   private active = 0;
@@ -80,8 +91,24 @@ export class Session {
     return this.players[this.active]!;
   }
 
+  /**
+   * $7004 as the power-on sequence leaves it: the stars come on only after
+   * the self tests ($1BBE), and stay on for good.
+   */
+  get starsEnabled(): boolean {
+    return this.mode !== Mode.Boot || this.bootTimer >= BOOT_TEST_FRAMES + BOOT_BLANK_FRAMES;
+  }
+
   /** Advance one frame. */
   update(input: InputState): void {
+    if (this.mode === Mode.Boot) {
+      // The self test ignores the coin switches; tracking the key here also
+      // keeps a held coin from crediting on the first attract frame.
+      this.prevCoin = input.coin;
+      if (++this.bootTimer >= BOOT_FRAMES) this.mode = Mode.Attract;
+      return;
+    }
+
     if (input.coin && !this.prevCoin) this.addCredit();
     this.prevCoin = input.coin;
 
@@ -166,6 +193,10 @@ export class Session {
 
   /** Draw the current frame into hardware memory. */
   render(videoram: Uint8Array, objram: Uint8Array): void {
+    if (this.mode === Mode.Boot) {
+      this.renderBoot(videoram, objram);
+      return;
+    }
     if (this.mode === Mode.Attract) {
       this.attract.render(videoram, objram);
       return;
@@ -178,6 +209,25 @@ export class Session {
     if (this.mode === Mode.Banner) {
       this.drawBanner(videoram, objram);
     }
+  }
+
+  /**
+   * The power-on display: the character-RAM self test fills the screen with
+   * its seeded pattern, one pass per frame ($1AC5: value = pass + $2F, one
+   * higher per 256-byte page), then the screen is cleared for the ROM
+   * checksum and SCRIPT_ZERO's row wipe, with the stars coming on late.
+   * The attribute RAM is zeroed throughout ($1A67).
+   */
+  private renderBoot(videoram: Uint8Array, objram: Uint8Array): void {
+    objram.fill(0);
+    if (this.bootTimer < BOOT_TEST_FRAMES) {
+      const seed = 0x20 - this.bootTimer + 0x2f;
+      for (let page = 0; page < 4; page++) {
+        videoram.fill((seed + page) & 0xff, page << 8, (page << 8) + 0x100);
+      }
+      return;
+    }
+    videoram.fill(CHAR_SPACE);
   }
 
   /** In a two-player game, show 1UP and 2UP scores with the active one lit. */

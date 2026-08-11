@@ -29,5 +29,7 @@ Namco Galaxian (1979) をブラウザで忠実再現する。ROM不要・TypeScr
   **未解決**: Chromium が proxy 経由で ERR_CONNECTION_RESET (curl は 200)。
   `curl -sS "$HTTPS_PROXY/__agentproxy/status"` で診断すること。
 - 操作: 矢印/AD=移動, Space/Z=撃つ, 5/C=コイン, 1=1P開始, 2=2P開始
+  (操作説明はページ最下部の小さなバー。ロード時は電源投入シーケンス再現:
+  RAMテストパターン→クリア→スターON→行ワイプ→アトラクト、session.ts Boot)
 - 既知の近似: デモのAI操作、GAME OVERページ尺、DIPサービスメニュー無し
   (fidelity-checklist の Approximated 節参照)

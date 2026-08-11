@@ -11,7 +11,6 @@ import { AudioEngine } from './audio/engine';
 
 const canvas = document.getElementById('screen') as HTMLCanvasElement;
 const stage = document.getElementById('stage') as HTMLElement;
-const overlay = document.getElementById('overlay') as HTMLElement;
 
 const palette = new Palette();
 const gfx = buildGfx();
@@ -29,11 +28,12 @@ session.dip = dipFromQuery(location.search);
 
 input.attach();
 input.attachTouch(stage);
-video.starsEnabled = true; // $7004
 
 const clock = new FrameClock(() => {
   starfield.advanceFrame();
   session.update(input.state);
+  // $7004: off through the power-on self test, on from $1BBE for good.
+  video.starsEnabled = session.starsEnabled;
   session.render(video.videoram, video.objram);
   video.draw(renderer.frame);
   renderer.present();
@@ -44,7 +44,6 @@ let started = false;
 const begin = async () => {
   if (started) return;
   started = true;
-  overlay.hidden = true;
   try {
     await audio.start();
     session.sound = audio;

@@ -17,7 +17,7 @@
       }
       #stage {
         position: fixed;
-        inset: 0;
+        inset: 0 0 22px 0;
         display: grid;
         place-items: center;
       }
@@ -26,42 +26,26 @@
         image-rendering: pixelated;
         background: #000;
       }
-      #overlay {
+      #help {
         position: fixed;
-        inset: 0;
-        display: grid;
-        place-items: center;
-        gap: 1.5rem;
-        align-content: center;
-        color: #fff;
-        font: 500 0.9rem/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
-        letter-spacing: 0.16em;
-        text-align: center;
-        background: rgb(0 0 0 / 0.72);
-        cursor: pointer;
-      }
-      #overlay[hidden] {
-        display: none;
-      }
-      #overlay b {
-        font-size: 1.25rem;
-        letter-spacing: 0.3em;
-        color: #ffd83d;
-      }
-      #overlay span {
-        color: #9aa0a6;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #6b7075;
+        font: 500 10px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.04em;
+        white-space: nowrap;
+        user-select: none;
       }
     </style>
   </head>
   <body>
     <div id="stage"><canvas id="screen"></canvas></div>
-    <div id="overlay">
-      <b>GALAXIAN</b>
-      <div>
-        PRESS ANY KEY&nbsp;&nbsp;&middot;&nbsp;&nbsp;5 = COIN<br />
-        <span>1 / 2 START &nbsp;&nbsp; &larr; &rarr; MOVE &nbsp;&nbsp; SPACE FIRE</span>
-      </div>
-    </div>
+    <div id="help">5/C=COIN &middot; 1/2=START &middot; &larr;&rarr;/AD=MOVE &middot; SPACE/Z=FIRE &middot; TAP=COIN+START</div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

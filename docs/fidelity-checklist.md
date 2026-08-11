@@ -56,6 +56,7 @@ honest so nobody has to reverse-engineer this project to find out.
 | All attract text from the ROM text table (addresses + ordinals, incl. PTS glyphs $A0-$A2 and the 8-glyph NAMCO logo) | TEXTPTRS $235C | `src/game/romtext.ts` |
 | Intro page per-column colours | COLOUR_ATTRIBUTE_TABLE_3 $1DB1 | `src/game/attract.ts` |
 | DIP options: bonus Galaxip table (7000/10000/12000/20000, $0152), 2/3 lives, free play (`?bonus=`/`?lives=`/`?freeplay=` URL params) | $0152, $18EF | `src/game/dip.ts`, `session.ts` |
+| Power-on sequence: character-RAM self-test pattern (pass+$2F per page, 32 passes), cleared screen for the ROM checksum, stars on late ($1BBE), SCRIPT_ZERO's 32-frame row wipe, then attract | $1AC5, $1B70, $00E6 | `src/game/session.ts` |
 | Player collision windows: enemy-bullet ($5/$B Y bands) and in-flight alien (narrow nose $15 / wide body $0F) | $0B8D, $12B6 | `src/game/game.ts` |
 | Attack flank from swarm scroll vs extents (within $1C), else random | $13F0 | `src/game/game.ts` |
 | HAVE_AGGRESSIVE_ALIENS set when 3 or fewer aliens remain | $16E7 | `src/game/game.ts` |

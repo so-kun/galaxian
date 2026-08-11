@@ -17,15 +17,17 @@ Namco Galaxian (1979) をブラウザで忠実再現する。ROM不要・TypeScr
   フレーム取得・スペクトログラム比較)
 - `.claude/rules/sources.md` — 一次資料リポジトリと参照方法
 
-## Current state (2026-08-10)
+## Current state (2026-08-11)
 
 - 実ROM由来のグラフィックス/パレット/音声 + 逐語移植の挙動で全面リワーク済み (push済)
+- アトラクト完全演出も移植済み: SCRIPT_ONE のタイミング定数そのまま
+  (ヘッダ→エイリアン4機がカラムスクロールでテキストを牽引→点滅値→NAMCOロゴ)、
+  ROMテキストテーブル (romtext.ts)、DIP設定 (?bonus= ?lives= ?freeplay=、dip.ts)
 - 残作業: 参照動画 https://www.youtube.com/watch?v=1bnxQsxvu2U とのフレーム照合。
   ネットワーク許可は設定済み (youtube.com, *.googlevideo.com が通る)。
   yt-dlp はボット検出で失敗 → Playwright 実ブラウザでフレーム取得を試行中。
   **未解決**: Chromium が proxy 経由で ERR_CONNECTION_RESET (curl は 200)。
   `curl -sS "$HTTPS_PROXY/__agentproxy/status"` で診断すること。
-- 実装済: アトラクトモード、旗艦スコア表示、正確な当たり判定/フランク/難易度、
-  2人交代プレイ+コイン/クレジット (session.ts)
 - 操作: 矢印/AD=移動, Space/Z=撃つ, 5/C=コイン, 1=1P開始, 2=2P開始
-- 既知の未実装: DIPサービスメニュー、アトラクトの完全な19段演出 (fidelity-checklist 参照)
+- 既知の近似: デモのAI操作、GAME OVERページ尺、DIPサービスメニュー無し
+  (fidelity-checklist の Approximated 節参照)

@@ -50,7 +50,12 @@ honest so nobody has to reverse-engineer this project to find out.
 | Dying reduces DIFFICULTY_EXTRA by one | $1300 | `src/game/game.ts` |
 | Colour codes and speeds per row (ALIEN_PARAMS_TABLE) | $1DD1 | `src/game/swarm.ts` |
 | HUD: red header/white scores, lives bottom-left, stage flags ($68 tens / $6C units) bottom-right | $2521, $214E | `src/game/game.ts` |
-| Attract cycle: score screen, SCORE ADVANCE TABLE (convoy charger + ranks), demo game; start begins play | SCRIPT_ONE $03D2 | `src/game/attract.ts` |
+| Attract cycle: the full SCRIPT_ONE stage table (GAME OVER → intro page → GAME OVER → demo) | $0164 | `src/game/attract.ts` |
+| Attract intro page: headers at $40 then every $50 frames; aliens scroll on every $D2 frames at 1 px/frame to Y=$C8, X=$8C+16·colour; text rows ride the column-scroll register from $C8, one char per 8 px; NAMCO after $D2; blink for $40·$11 frames | $0218, $0341, $109B, $10D8, $18C0, $0281 | `src/game/attract.ts` |
+| The table's blinking values: characters at $5193 (+2 columns/row), cleared at t%64=0, drawn at t%64=32, flagship cycling 150/200/300/800; rows join as ATTRACT_MODE_SCROLL_ID covers them | $0367, $039A, $03A6 | `src/game/attract.ts` |
+| All attract text from the ROM text table (addresses + ordinals, incl. PTS glyphs $A0-$A2 and the 8-glyph NAMCO logo) | TEXTPTRS $235C | `src/game/romtext.ts` |
+| Intro page per-column colours | COLOUR_ATTRIBUTE_TABLE_3 $1DB1 | `src/game/attract.ts` |
+| DIP options: bonus Galaxip table (7000/10000/12000/20000, $0152), 2/3 lives, free play (`?bonus=`/`?lives=`/`?freeplay=` URL params) | $0152, $18EF | `src/game/dip.ts`, `session.ts` |
 | Player collision windows: enemy-bullet ($5/$B Y bands) and in-flight alien (narrow nose $15 / wide body $0F) | $0B8D, $12B6 | `src/game/game.ts` |
 | Attack flank from swarm scroll vs extents (within $1C), else random | $13F0 | `src/game/game.ts` |
 | HAVE_AGGRESSIVE_ALIENS set when 3 or fewer aliens remain | $16E7 | `src/game/game.ts` |
@@ -69,17 +74,17 @@ playback rate with stage time.
 
 ## Approximated — structure right, constants tuned
 
-- **Attract mode** reproduces the visible cycle (score screen, score-advance
-  table, demo game) but not the full 19-stage SCRIPT_ONE choreography: the
-  "WE ARE THE GALAXIANS" scroll-in, the NAMCO logo page, and the exact
-  convoy-charger blink/scroll are simplified, and the demo is driven by a
-  simple threat-tracking AI rather than the ROM's scripted fake controller.
-- The DIP switch service menu is not implemented; the bonus-life threshold
-  uses the default DIP (7000) and is settable via `Game.bonusThreshold`, and
-  the free-play / lives DIP options are not surfaced. Two-player alternation
-  keeps each player's full state (score, lives, swarm) but does not reproduce
-  the ROM's exact packed-swarm save/restore format -- it swaps whole game
-  instances instead.
+- **Attract demo player**: the demonstration game is driven by a simple
+  threat-tracking AI rather than the ROM's scripted fake controller ($0892).
+- **Attract GAME OVER page durations** are fixed at 240 frames; the ROM
+  chains several counter stages ($018C/$01BE/$02D1/$032E) whose exact sums
+  differ slightly, and the swarm from the previous demo is not shown moving
+  behind the first GAME OVER page.
+- The DIP switch **service menu** is not implemented; options are set via
+  URL parameters instead of IN2 bits. Two-player alternation keeps each
+  player's full state (score, lives, swarm) but does not reproduce the ROM's
+  exact packed-swarm save/restore format -- it swaps whole game instances
+  instead.
 
 ## Known gaps
 

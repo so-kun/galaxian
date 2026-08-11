@@ -15,6 +15,8 @@ import { Attract } from './attract';
 import type { SoundSink } from './game';
 import { charOrdinal, CHAR_SPACE } from '../video/gfx';
 import { COLOR_CODE_TEXT_RED, COLOR_CODE_TEXT_WHITE } from '../video/palette';
+import { printText, textCol, TEXT_PLAYER_ONE, TEXT_PLAYER_TWO } from './romtext';
+import { DEFAULT_DIP, type DipSettings } from './dip';
 import type { InputState } from '../input';
 
 const MAX_CREDITS = 99;
@@ -32,6 +34,7 @@ const enum Mode {
 export class Session {
   credits = 0;
   sound: SoundSink | null = null;
+  dip: DipSettings = { ...DEFAULT_DIP };
 
   private mode = Mode.Attract;
   private readonly attract = new Attract();
@@ -55,12 +58,15 @@ export class Session {
     g.autoRespawn = false;
     g.playerIndex = index;
     g.highScore = this.highScore;
+    // Apply the DIP options: starting Galaxips and the bonus threshold.
+    g.lives = this.dip.lives;
+    g.bonusThreshold = this.dip.bonusThreshold;
     return g;
   }
 
   private startGame(twoPlayer: boolean): void {
     this.twoPlayer = twoPlayer;
-    this.credits -= twoPlayer ? 2 : 1;
+    if (!this.dip.freePlay) this.credits -= twoPlayer ? 2 : 1;
     this.active = 0;
     this.players = twoPlayer ? [this.newGame(0), this.newGame(1)] : [this.newGame(0)];
     // A single-player game respawns on its own; a two-player game hands off.
@@ -96,17 +102,19 @@ export class Session {
   }
 
   private updateAttract(input: InputState): void {
-    // Start buttons need credits; without them, the attract cycle just runs.
-    if (input.start2 && this.credits >= 2) {
+    // Start buttons need credits (unless free play).
+    const free = this.dip.freePlay;
+    if (input.start2 && (free || this.credits >= 2)) {
       this.startGame(true);
       return;
     }
-    if (input.start && this.credits >= 1) {
+    if (input.start && (free || this.credits >= 1)) {
       this.startGame(false);
       return;
     }
-    // In attract, `update` returns true only on a start with no credit path;
-    // ignore that and keep cycling (the board does the same without credit).
+    this.attract.credits = this.credits;
+    this.attract.freePlay = free;
+    this.attract.bonusThreshold = this.dip.bonusThreshold;
     this.attract.update({ ...input, start: false, start2: false });
   }
 
@@ -160,17 +168,6 @@ export class Session {
   render(videoram: Uint8Array, objram: Uint8Array): void {
     if (this.mode === Mode.Attract) {
       this.attract.render(videoram, objram);
-      // Credit line at the bottom, as the cabinet shows ($018C).
-      const label = this.credits > 0 ? 'PUSH 1 OR 2 PLAYER' : 'INSERT COIN  (5)';
-      this.text(videoram, objram, 28, 30, label, COLOR_CODE_TEXT_WHITE);
-      this.text(
-        videoram,
-        objram,
-        10,
-        30,
-        `CREDIT ${this.credits.toString().padStart(2, ' ')}`,
-        COLOR_CODE_TEXT_WHITE,
-      );
       return;
     }
 
@@ -200,8 +197,14 @@ export class Session {
   }
 
   private drawBanner(videoram: Uint8Array, objram: Uint8Array): void {
-    const label = this.active === 0 ? 'PLAYER ONE' : 'PLAYER TWO';
-    if ((this.bannerTimer >> 4) & 1) this.text(videoram, objram, 16, 12, label, COLOR_CODE_TEXT_RED);
+    // The ROM's own PLAYER 0NE / PLAYER TWO strings at $5294, blinking.
+    if ((this.bannerTimer >> 4) & 1) {
+      const text = this.active === 0 ? TEXT_PLAYER_ONE : TEXT_PLAYER_TWO;
+      const col = textCol(text);
+      objram[col * 2 + 1] = COLOR_CODE_TEXT_RED;
+      objram[col * 2] = 0;
+      printText(videoram, text);
+    }
   }
 
   private text(

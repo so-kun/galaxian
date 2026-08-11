@@ -27,19 +27,55 @@ describe('attract mode', () => {
     const videoram = new Uint8Array(0x400);
     const objram = new Uint8Array(0x100);
 
-    // Run past the scores screen into the table.
-    for (let f = 0; f < 300; f++) a.update(IDLE);
+    // Run past the game-over screen and the headers' one-per-80-frames
+    // build-up (the last header prints at intro frame $40 + 3*$50 = 304).
+    for (let f = 0; f < 240 + 320; f++) a.update(IDLE);
     a.render(videoram, objram);
 
-    // "SCORE ADVANCE TABLE" heading is present.
-    expect(readText(videoram, 28, 5, 19)).toBe('SCORE ADVANCE TABLE');
-    expect(readText(videoram, 24, 8, 14)).toBe('CONVOY CHARGER');
+    // The headings sit at the ROM text table's own addresses:
+    // "- SCORE ADVANCE TABLE -" at $534F (the dash and space lead in),
+    // "CONVOY  CHARGER" at $52D1, "WE ARE THE GALAXIANS" at $5327.
+    expect(readText(videoram, 24, 15, 19)).toBe('SCORE ADVANCE TABLE');
+    expect(readText(videoram, 22, 17, 15)).toBe('CONVOY  CHARGER');
+    expect(readText(videoram, 25, 7, 20)).toBe('WE ARE THE GALAXIANS');
+  });
+
+  it('scrolls the rank rows in behind their aliens and blinks the values', () => {
+    const a = new Attract();
+    const videoram = new Uint8Array(0x400);
+    const objram = new Uint8Array(0x100);
+
+    // Just after the flagship row's text is queued: a few characters are
+    // plotted and the column scroll register is counting down from $C8.
+    for (let f = 0; f < 240 + 336 + 24 + 25; f++) a.update(IDLE);
+    a.render(videoram, objram);
+    expect(readText(videoram, 22, 19, 6)).toBe('  60  '); // 4 of 18 chars so far
+    expect(objram[19 * 2]).toBe(0xc8 - 25); // column scroll mid-flight
+    // The flagship sprite is on its way in (slot 7).
+    expect(objram[0x40 + 7 * 4 + 1]).not.toBe(0);
+
+    // Deep into the page: all rows landed, NAMCO logo up, values blinking.
+    const namcoAt = 336 + 3 * 210 + 210; // = intro frame 1176
+    while ((a as unknown as { timer: number }).timer < namcoAt + 0x60) a.update(IDLE);
+    a.render(videoram, objram);
+    expect(videoram[0x27c]).toBe(0x9a); // NAMCO logo's first glyph at $527C
+    const t = (a as unknown as { timer: number }).timer;
+    const visible = (t & 0x3f) >= 0x20;
+    // Flagship value cycles 150/200/300/800; statics are 100/80/60.
+    const flagshipDigit = videoram[0x193]!;
+    if (visible) {
+      expect([0x01, 0x02, 0x03, 0x08]).toContain(flagshipDigit);
+      expect(videoram[0x195]).toBe(0x01); // '1' of 100
+    } else {
+      expect(flagshipDigit).toBe(0x10); // blanked
+    }
   });
 
   it('runs a demo game that actually plays', () => {
     const a = new Attract();
-    // Advance into the demo phase.
-    for (let f = 0; f < 720; f++) a.update(IDLE);
+    // Advance into the demo phase: game over (240) + intro page (2264) +
+    // second game over (240).
+    for (let f = 0; f < 2750; f++) a.update(IDLE);
     // Let the demo run and confirm it steps a live game.
     let sawFormationThin = false;
     let startCount = 46;

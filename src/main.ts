@@ -5,6 +5,7 @@ import { Renderer } from './video/renderer';
 import { buildGfx } from './video/gfx';
 import { VideoHardware } from './video/hardware';
 import { Session } from './game/session';
+import { dipFromQuery } from './game/dip';
 import { Input } from './input';
 import { AudioEngine } from './audio/engine';
 
@@ -23,6 +24,8 @@ const audio = new AudioEngine();
 // The cabinet session owns credits, the attract cycle, and one- or two-player
 // games. It renders whichever is current into the shared hardware memory.
 const session = new Session();
+// DIP switches come from the URL: ?bonus=7000|10000|12000|20000&lives=2|3&freeplay=1
+session.dip = dipFromQuery(location.search);
 
 input.attach();
 input.attachTouch(stage);

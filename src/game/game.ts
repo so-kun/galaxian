@@ -604,7 +604,9 @@ export class Game {
   private killPlayer(): void {
     this.playerState = PlayerState.Exploding;
     this.explosionFrame = 0;
-    this.explosionCounter = 10;
+    // $12FE queues the first frame at once and HANDLE_PLAYER_DYING re-queues
+    // it on its first 10-frame tick, so frame 0 shows for 20 frames.
+    this.explosionCounter = 20;
     this.lives--;
     this.bulletActive = false;
     this.sound?.playerDeath();
@@ -663,11 +665,14 @@ export class Game {
 
     if (this.playerState === PlayerState.Exploding) {
       const base = PLAYER_EXPLOSION_ORDINALS[Math.min(this.explosionFrame, 3)]!;
-      // 4x4 characters centred on the ship cell.
+      // DRAW_PLAYER_SHIP_EXPLODING ($216F): four 2x2 blocks at $51DA, $51DC,
+      // $521A, $521C, each PLOT_CHARACTERS_2_BY_2_ASCENDING with the ordinal
+      // running on across blocks -- not a row-major 4x4.
       for (let cy = 0; cy < 4; cy++) {
         for (let cx = 0; cx < 4; cx++) {
           const addr = (((14 + cy) & 0x1f) << 5) | ((SHIP_CHAR_COL - 2 + cx) & 0x1f);
-          videoram[addr] = base + cy * 4 + cx;
+          const block = ((cy >> 1) << 1) | (cx >> 1);
+          videoram[addr] = base + (block << 2) + ((cy & 1) << 1) + (cx & 1);
         }
       }
       return;

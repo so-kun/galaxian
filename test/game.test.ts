@@ -160,6 +160,23 @@ describe('slot allocation', () => {
   });
 });
 
+describe('swarm-alien explosion', () => {
+  it('plays on the scratch slot and expires after its countdown', () => {
+    const swarm = new Swarm();
+    swarm.reset();
+    const inflight = new InflightAliens();
+    const scratch = inflight.slots[SLOT_SCRATCH]!;
+    scratch.isDying = true;
+    scratch.dyingCounter = 16;
+    for (let f = 0; f < 15; f++) {
+      inflight.update(f, 0x80, true, false, swarm);
+      expect(scratch.isDying).toBe(true);
+    }
+    inflight.update(15, 0x80, true, false, swarm);
+    expect(scratch.isDying).toBe(false);
+  });
+});
+
 describe('a running game', () => {
   it('launches aliens that fly the arc and then attack', () => {
     const game = new Game();

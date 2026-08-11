@@ -317,6 +317,16 @@ export class InflightAliens {
   /** Advance every slot by one frame. */
   update(frame: number, playerY: number, playerSpawned: boolean, flagshipHit: boolean, swarm: Swarm): void {
     this.updateShootingDistance(swarm);
+    // Slot 0 is the scratch explosion for a shot swarm alien ($0B52); it
+    // runs the same dying countdown but never was a dive, so no dive-end.
+    const scratch = this.slots[0]!;
+    if (scratch.isDying) {
+      if (--scratch.dyingCounter > 0) {
+        scratch.dyingAnimFrame = scratch.dyingCounter < 8 ? 1 : 0;
+      } else {
+        scratch.isDying = false;
+      }
+    }
     for (let i = 1; i < INFLIGHT_SLOTS; i++) {
       const alien = this.slots[i]!;
       if (alien.isDying) {

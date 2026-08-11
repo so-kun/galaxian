@@ -541,6 +541,8 @@ export class Game {
     const scratch = this.inflight.slots[0]!;
     scratch.isDying = true;
     scratch.dyingCounter = 16;
+    scratch.dyingAnimFrame = 0;
+    scratch.pointSprite = 0;
     scratch.x = x;
     scratch.y = y;
   }
@@ -722,9 +724,12 @@ export class Game {
     objram[0 * 2] = 0;
     objram[1 * 2 + 1] = COLOR_CODE_TEXT_WHITE;
     objram[1 * 2] = 0;
+    // Both bottom columns use the player-ship group (pen 1 white, pen 2
+    // red), which is what draws the flag's pole and cloth; the attract
+    // page's own table ($1DB1) has code 6 for columns 30-31 too.
     objram[30 * 2 + 1] = COLOR_CODE_PLAYER;
     objram[30 * 2] = 0;
-    objram[31 * 2 + 1] = COLOR_CODE_TEXT_WHITE;
+    objram[31 * 2 + 1] = COLOR_CODE_PLAYER;
     objram[31 * 2] = 0;
 
     // Header (charCol 0 = top row) and scores below it.

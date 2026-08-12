@@ -263,25 +263,40 @@ describe('difficulty progression', () => {
     // Clear stages by wiping the swarm directly; the next stage begins only
     // after HANDLE_LEVEL_COMPLETE's 256-frame pause ($1637).
     for (let stage = 1; stage <= 10; stage++) {
-      game.lives = 3; // player deaths must not end the game mid-test
       game.swarm.flags.fill(0);
       game.inflight.reset();
       let n = 0;
-      while (game.stage === stage && n++ < 3000) game.step(IDLE);
+      while (game.stage === stage && n++ < 3000) {
+        // A sitting duck on IDLE input gets shot; running out of lives would
+        // make step() bail out early and freeze the stage.
+        game.lives = 3;
+        game.step(IDLE);
+      }
     }
     expect(game.inflight.difficultyBase).toBe(7);
   });
 
   it('resets DIFFICULTY_EXTRA to 0 at the start of each stage', () => {
     const game = new Game();
-    // Let some stage time pass so extra climbs.
-    for (let f = 0; f < 0x3c * 0x14 + 5; f++) game.step(IDLE);
-    expect(game.inflight.difficultyExtra).toBeGreaterThanOrEqual(1);
-    game.lives = 3;
+    // Let a full DIFFICULTY_EXTRA period pass so the counter fires. The ship
+    // is stationary on IDLE input, so it dies along the way -- lives are
+    // topped up because game over stops the counter dead, and the peak is
+    // what matters because each death takes one back off ($1300).
+    let peak = 0;
+    for (let f = 0; f < 0x3c * 0x14 + 5; f++) {
+      game.lives = 3;
+      game.step(IDLE);
+      peak = Math.max(peak, game.inflight.difficultyExtra);
+    }
+    expect(peak).toBeGreaterThanOrEqual(1);
+
     game.swarm.flags.fill(0);
     game.inflight.reset();
     let frames = 0;
-    while (game.stage === 1 && frames++ < 3000) game.step(IDLE);
+    while (game.stage === 1 && frames++ < 3000) {
+      game.lives = 3;
+      game.step(IDLE);
+    }
     expect(game.stage).toBe(2);
     // The pause before the new swarm is at least 256 frames long.
     expect(frames).toBeGreaterThanOrEqual(256);

@@ -173,8 +173,8 @@ export class Attract {
           break;
         }
         this.stepDemo();
+        // The demo cannot score ($21A6), so it never touches the high score.
         if (!this.demo || this.demo.gameOver || this.timer >= DEMO_MAX_FRAMES) {
-          this.highScore = Math.max(this.highScore, this.demo?.highScore ?? 0);
           this.enter(Phase.GameOver);
         }
         break;

@@ -45,6 +45,14 @@ export class Session {
   credits = 0;
   sound: SoundSink | null = null;
   dip: DipSettings = { ...DEFAULT_DIP };
+  /**
+   * Called whenever the high score rises, so a host can keep it across
+   * visits. The board itself has no such storage -- HI_SCORE ($40A8) is
+   * three BCD bytes of working RAM, wiped by the power-on memory fill
+   * ($1B8A) -- so persistence is ours, and it lives outside this class to
+   * keep the game logic free of browser APIs.
+   */
+  onHighScore: ((score: number) => void) | null = null;
 
   private mode = Mode.Boot;
   private bootTimer = 0;
@@ -53,9 +61,23 @@ export class Session {
   private active = 0;
   private twoPlayer = false;
   private bannerTimer = 0;
-  private highScore = 0;
+  private best = 0;
   /** Previous coin-key state, so a held key adds only one credit. */
   private prevCoin = false;
+
+  /** The best score this cabinet has seen, shown as HIGH SCORE. */
+  get highScore(): number {
+    return this.best;
+  }
+
+  /** Raise the high score. Lower values are ignored, as on the board. */
+  set highScore(score: number) {
+    if (!Number.isFinite(score) || score <= this.best) return;
+    this.best = Math.floor(score);
+    this.attract.highScore = this.best;
+    for (const p of this.players) p.highScore = this.best;
+    this.onHighScore?.(this.best);
+  }
 
   /** A coin was inserted. */
   addCredit(): void {
@@ -149,6 +171,10 @@ export class Session {
     const game = this.activeGame;
     game.step(input);
 
+    // $21DA compares against HI_SCORE on every scoring event, so the high
+    // score tracks the game as it is played rather than waiting for the end.
+    this.highScore = game.score;
+
     // Hand-off point: the active player just died with lives remaining.
     if (game.pendingResume) {
       if (this.twoPlayer && this.otherPlayerInPlay()) {
@@ -167,9 +193,8 @@ export class Session {
         return;
       }
       // Both players done: linger on game over, then return to attract.
-      this.highScore = Math.max(this.highScore, ...this.players.map((p) => p.highScore));
+      for (const p of this.players) this.highScore = p.score;
       if (game.idleFrames > ATTRACT_IDLE || input.start) {
-        this.attract.highScore = this.highScore;
         this.attract.reset();
         this.mode = Mode.Attract;
       }

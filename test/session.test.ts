@@ -14,7 +14,13 @@ const IDLE: InputState = {
 /** Reach into the session for white-box assertions. */
 type Internals = {
   credits: number;
-  players: { lives: number; gameOver: boolean; autoRespawn: boolean; playerIndex: number }[];
+  players: {
+    lives: number;
+    gameOver: boolean;
+    autoRespawn: boolean;
+    playerIndex: number;
+    highScore: number;
+  }[];
   active: number;
   twoPlayer: boolean;
   mode: number;
@@ -58,6 +64,51 @@ describe('power-on sequence', () => {
     // Attract is up afterwards: the header's HIGH SCORE from the ROM table.
     s.render(videoram, objram);
     expect(videoram[0x280]).not.toBe(0x10);
+  });
+});
+
+describe('high score', () => {
+  it('only ever rises, and reports each rise once', () => {
+    const s = bootedSession();
+    const seen: number[] = [];
+    s.onHighScore = (score) => seen.push(score);
+
+    s.highScore = 3000;
+    s.highScore = 1500; // lower: ignored
+    s.highScore = 3000; // equal: ignored
+    s.highScore = 7250;
+    expect(s.highScore).toBe(7250);
+    expect(seen).toEqual([3000, 7250]);
+  });
+
+  it('rejects values a six-digit BCD score could never hold', () => {
+    const s = bootedSession();
+    s.highScore = Number.NaN;
+    s.highScore = -1;
+    expect(s.highScore).toBe(0);
+  });
+
+  it('shows a restored high score on the attract screen', () => {
+    const s = bootedSession();
+    s.highScore = 20560;
+    const videoram = new Uint8Array(0x400);
+    const objram = new Uint8Array(0x100);
+    s.render(videoram, objram);
+    // The HIGH SCORE field is at $5241: six digits reading right from there.
+    let digits = '';
+    for (let i = 0; i < 6; i++) {
+      const ch = videoram[(((18 - i) & 0x1f) << 5) | 1]!;
+      digits += ch === 0x10 ? ' ' : String.fromCharCode(0x30 + ch);
+    }
+    expect(digits).toBe(' 20560');
+  });
+
+  it('carries the high score into a new game', () => {
+    const s = bootedSession();
+    s.highScore = 9000;
+    coin(s);
+    s.update({ ...IDLE, start: true });
+    expect(peek(s).players[0]!.highScore).toBe(9000);
   });
 });
 

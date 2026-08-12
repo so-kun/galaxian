@@ -33,3 +33,6 @@ Namco Galaxian (1979) をブラウザで忠実再現する。ROM不要・TypeScr
   RAMテストパターン→クリア→スターON→行ワイプ→アトラクト、session.ts Boot)
 - 既知の近似: デモのAI操作、GAME OVERページ尺、DIPサービスメニュー無し
   (fidelity-checklist の Approximated 節参照)
+- 実機に無い追加: ハイスコアの localStorage 保存 (`galaxian.highScore`)。
+  実機は名前入力もNVRAMも無く電源断で消える。`Session.onHighScore` 経由で
+  main.ts のみが localStorage を触る (fidelity-checklist の Deliberate additions)

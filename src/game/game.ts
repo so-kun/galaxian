@@ -622,6 +622,12 @@ export class Game {
   }
 
   private addScore(points: number): void {
+    // UPDATE_PLAYER_SCORE_COMMAND ($21A6) opens with `rst $08`, so the whole
+    // routine -- the score, the extra life and the high score with it -- is
+    // abandoned while IS_GAME_OVER is set. The demonstration game runs that
+    // way from start to finish, which is why it never scores a point.
+    if (this.demoMode) return;
+
     this.score += points;
     if (this.score > this.highScore) this.highScore = this.score;
     if (!this.bonusAwarded && this.score >= this.bonusThreshold) {

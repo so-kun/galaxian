@@ -26,6 +26,38 @@ const session = new Session();
 // DIP switches come from the URL: ?bonus=7000|10000|12000|20000&lives=2|3&freeplay=1
 session.dip = dipFromQuery(location.search);
 
+/**
+ * High score persistence.
+ *
+ * The board keeps HI_SCORE in plain working RAM and the power-on memory
+ * fill wipes it, so a real Galaxian forgets its high score every morning --
+ * and it has no initial-entry screen to attach a name to. Keeping the score
+ * across visits is therefore ours, not the ROM's, and it is deliberately
+ * confined to this file. Storage can throw (private browsing, disabled
+ * cookies, quota), and none of it is worth losing a game over.
+ */
+const HIGH_SCORE_KEY = 'galaxian.highScore';
+
+const loadHighScore = (): number => {
+  try {
+    const stored = Number(localStorage.getItem(HIGH_SCORE_KEY));
+    // Scores are six BCD digits on the board, so anything else is not ours.
+    if (!Number.isFinite(stored) || stored < 0 || stored > 999999) return 0;
+    return Math.floor(stored);
+  } catch {
+    return 0;
+  }
+};
+
+session.highScore = loadHighScore();
+session.onHighScore = (score) => {
+  try {
+    localStorage.setItem(HIGH_SCORE_KEY, String(score));
+  } catch {
+    // Storage unavailable: the score still stands for this session.
+  }
+};
+
 input.attach();
 input.attachTouch(stage);
 

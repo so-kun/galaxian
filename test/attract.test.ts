@@ -128,6 +128,25 @@ describe('attract mode', () => {
     expect(sawFormationThin).toBe(true);
   });
 
+  it('never scores during the demonstration game', () => {
+    const a = new Attract();
+    // Into the demo, then let it play out a long way.
+    for (let f = 0; f < 2750; f++) a.update(IDLE);
+    let sawThinning = false;
+    for (let f = 0; f < 1500; f++) {
+      a.update(IDLE);
+      const demo = (a as unknown as { demo: { swarm: { aliveCount: number }; score: number } | null })
+        .demo;
+      if (!demo) continue;
+      if (demo.swarm.aliveCount < 46) sawThinning = true;
+      // UPDATE_PLAYER_SCORE_COMMAND ($21A6) is abandoned by its `rst $08`
+      // for the whole of attract, so kills are worth nothing here.
+      expect(demo.score).toBe(0);
+    }
+    expect(sawThinning).toBe(true); // it really was shooting things down
+    expect(a.highScore).toBe(0);
+  });
+
   it('cycles back to the scores screen and carries the high score', () => {
     const a = new Attract();
     a.highScore = 3000;

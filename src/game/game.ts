@@ -146,6 +146,12 @@ export class Game {
   autoRespawn = true;
   /** Which player this instance is (0 or 1), for the HUD and banners. */
   playerIndex = 0;
+  /**
+   * The inverse of IS_GAME_IN_PLAY ($4006): set for the attract cycle's
+   * demonstration game, which runs with IS_GAME_OVER still raised and so
+   * shows none of the bottom-of-screen play HUD.
+   */
+  demoMode = false;
 
   /** TIMING_VARIABLE ($425F); the original decrements, direction is irrelevant. */
   private frame = 0;
@@ -742,13 +748,6 @@ export class Game {
     objram[0 * 2] = 0;
     objram[1 * 2 + 1] = COLOR_CODE_TEXT_WHITE;
     objram[1 * 2] = 0;
-    // Both bottom columns use the player-ship group (pen 1 white, pen 2
-    // red), which is what draws the flag's pole and cloth; the attract
-    // page's own table ($1DB1) has code 6 for columns 30-31 too.
-    objram[30 * 2 + 1] = COLOR_CODE_PLAYER;
-    objram[30 * 2] = 0;
-    objram[31 * 2 + 1] = COLOR_CODE_PLAYER;
-    objram[31 * 2] = 0;
 
     // Header labels and scores at the ROM's own addresses: "1UP" at $5340,
     // HIGH SCORE at $5280, the score fields at $5381 and $5241.
@@ -763,6 +762,22 @@ export class Game {
       objram[col * 2] = 0;
       printText(videoram, TEXT_GAME_OVER);
     }
+
+    // The bottom-left/right area is shared with the attract cycle's credit
+    // line, and both routines that own it here -- DISPLAY_PLAYER_SHIPS_
+    // REMAINING ($24C4) and DISPLAY_LEVEL_FLAGS ($2520) -- open with
+    // `rst $08`, which abandons them while IS_GAME_OVER is set. That is the
+    // whole of attract and demo play, so neither the Galaxips nor the stage
+    // flags are drawn there and nothing collides with CREDIT.
+    if (this.demoMode || this.gameOver) return;
+
+    // Both bottom columns use the player-ship group (pen 1 white, pen 2
+    // red), which is what draws the flag's pole and cloth; the attract
+    // page's own table ($1DB1) has code 6 for columns 30-31 too.
+    objram[30 * 2 + 1] = COLOR_CODE_PLAYER;
+    objram[30 * 2] = 0;
+    objram[31 * 2 + 1] = COLOR_CODE_PLAYER;
+    objram[31 * 2] = 0;
 
     // A 2x2 block, PLOT_CHARACTERS_2_BY_2_ASCENDING order: base and base+1 on
     // one character row, base+2 and base+3 on the next.

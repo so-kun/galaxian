@@ -94,6 +94,19 @@ export function textCol(text: RomText): number {
 }
 
 /**
+ * The column-scroll value a scrolled text starts from ($2338).
+ *
+ * The ROM derives it from the text's own address, and the arithmetic works
+ * out to eight times the character row -- exactly the offset that parks the
+ * first character just beyond the right edge. Starting anywhere higher wraps
+ * the 256-pixel tile plane round and shows the text at the *left* edge until
+ * the scroll comes back under this value.
+ */
+export function scrollStart(text: RomText): number {
+  return ((text.addr - 0x5000) >> 2) & 0xf8;
+}
+
+/**
  * A score as PLOT_SCORE_CHARACTERS ($2261) shows it: six digits with up to
  * four leading zeros blanked, so a zero score reads "00".
  */

@@ -37,6 +37,7 @@ import {
   printText,
   textCol,
   scoreText,
+  scrollStart,
   bonusGalaxipText,
   TEXT_GAME_OVER,
   TEXT_PUSH_START,
@@ -189,6 +190,9 @@ export class Attract {
 
   private startDemo(): void {
     this.demo = new Game();
+    // The demonstration runs with IS_GAME_OVER still set, so it shows no
+    // Galaxips and no stage flags -- the bottom belongs to the credit line.
+    this.demo.demoMode = true;
     this.demoInput = { ...IDLE };
     this.aiFireCooldown = 0;
     this.enter(Phase.Demo);
@@ -277,13 +281,14 @@ export class Attract {
       objram[base + 2] = row.colour & 7;
       objram[base + 3] = (x - 8) & 0xff;
 
-      // The text row ($18C0): the column scroll starts at $C8 and counts
-      // down; a new character is plotted every 8th pixel, so the string
-      // rides in behind its alien.
+      // The text row ($18C0): the column scroll counts down from the value
+      // $2338 derives from the text's own address, and a new character is
+      // plotted every 8th pixel, so the string rides in behind its alien.
       const e = t - start - ALIEN_TEXT_DELAY;
       if (e >= 0) {
-        const scroll = Math.max(0, ALIEN_TARGET_Y - e);
-        const reveal = Math.min(row.text.chars.length, (e >> 3) + 1);
+        const from = scrollStart(row.text);
+        const scroll = Math.max(0, from - e);
+        const reveal = Math.min(row.text.chars.length, ((from - scroll) >> 3) + 1);
         objram[textCol(row.text) * 2] = scroll;
         printText(videoram, row.text, reveal);
       }
@@ -355,13 +360,12 @@ export class Attract {
     }
     this.setColor(objram, TEXT_CREDIT, COLOR_CODE_TEXT_WHITE);
     printText(videoram, TEXT_CREDIT);
-    // The credit count goes after the label.
-    const label = this.credits.toString();
-    let idx = TEXT_CREDIT.addr - 0x5000 - 0x20 * TEXT_CREDIT.chars.length;
-    for (let i = 0; i < label.length; i++) {
-      videoram[idx & 0x3ff] = label.charCodeAt(i) - 0x30;
-      idx -= 0x20;
-    }
+    // The count follows the label as two digits at $529F and $527F, with the
+    // tens left blank when it is zero ($250E). Credits are clamped to 99.
+    const credits = Math.min(99, this.credits);
+    const tens = Math.floor(credits / 10);
+    if (tens !== 0) videoram[0x29f] = tens;
+    videoram[0x27f] = credits % 10;
     // BONUS GALAXIP FOR nnnn PTS above it, on the game-over pages only.
     if (this.phase === Phase.GameOver || this.phase === Phase.GameOver2) {
       const bonus = bonusGalaxipText(this.bonusThreshold);

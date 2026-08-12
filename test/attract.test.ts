@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import { Attract } from '../src/game/attract';
+import {
+  scrollStart,
+  textCol,
+  TEXT_PTS_60_300,
+  TEXT_PTS_50_100,
+  TEXT_PTS_40_80,
+  TEXT_PTS_30_60,
+} from '../src/game/romtext';
 import { CHAR_SPACE } from '../src/video/gfx';
 import type { InputState } from '../src/input';
 
@@ -46,11 +54,13 @@ describe('attract mode', () => {
     const objram = new Uint8Array(0x100);
 
     // Just after the flagship row's text is queued: a few characters are
-    // plotted and the column scroll register is counting down from $C8.
+    // plotted and the column scroll counts down from the value $2338 derives
+    // from the text's address ($52D3 -> 8 * char row 22 = 176).
+    expect(scrollStart(TEXT_PTS_60_300)).toBe(176);
     for (let f = 0; f < 240 + 336 + 24 + 25; f++) a.update(IDLE);
     a.render(videoram, objram);
     expect(readText(videoram, 22, 19, 6)).toBe('  60  '); // 4 of 18 chars so far
-    expect(objram[19 * 2]).toBe(0xc8 - 25); // column scroll mid-flight
+    expect(objram[19 * 2]).toBe(176 - 25); // column scroll mid-flight
     // The flagship sprite is on its way in (slot 7).
     expect(objram[0x40 + 7 * 4 + 1]).not.toBe(0);
 
@@ -68,6 +78,34 @@ describe('attract mode', () => {
       expect(videoram[0x195]).toBe(0x01); // '1' of 100
     } else {
       expect(flagshipDigit).toBe(0x10); // blanked
+    }
+  });
+
+  it('never lets a scrolling row wrap round to the left edge', () => {
+    const a = new Attract();
+    const videoram = new Uint8Array(0x400);
+    const objram = new Uint8Array(0x100);
+
+    // Walk the whole intro page. A character is only ever allowed into the
+    // tile plane once its column scroll has come down far enough to place it
+    // on screen from the right; any earlier and the 256-pixel plane wraps it
+    // round to the left edge.
+    for (let f = 0; f < 240; f++) a.update(IDLE); // past the GAME OVER page
+    for (let f = 0; f < 2264; f++) {
+      a.update(IDLE);
+      a.render(videoram, objram);
+      for (const text of [TEXT_PTS_60_300, TEXT_PTS_50_100, TEXT_PTS_40_80, TEXT_PTS_30_60]) {
+        const col = textCol(text);
+        const scroll = objram[col * 2]!;
+        for (let charRow = 0; charRow < 32; charRow++) {
+          if (videoram[(charRow << 5) | col] === CHAR_SPACE) continue;
+          // A character rests at screen_x = 239 - 8*charRow and the scroll
+          // pushes it right from there. Once that sum passes 255 the plane
+          // has wrapped and the character reappears at the left edge.
+          const restingX = (239 - charRow * 8) & 0xff;
+          expect(restingX + scroll).toBeLessThanOrEqual(255);
+        }
+      }
     }
   });
 

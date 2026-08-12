@@ -52,8 +52,10 @@ honest so nobody has to reverse-engineer this project to find out.
 | Dying reduces DIFFICULTY_EXTRA by one | $1300 | `src/game/game.ts` |
 | Colour codes and speeds per row (ALIEN_PARAMS_TABLE) | $1DD1 | `src/game/swarm.ts` |
 | HUD: red header/white scores, lives bottom-left, stage flags ($68 tens / $6C units) bottom-right | $2521, $214E | `src/game/game.ts` |
+| The bottom of the screen is shared, not stacked: the Galaxips and stage flags open with `rst $08` and so are skipped whenever IS_GAME_OVER is set (all of attract and the demo), while the credit line bails out when IS_GAME_IN_PLAY is set | $0008, $2520, $24C4, $24EB | `src/game/game.ts`, `attract.ts` |
+| CREDIT count as two digits at $529F / $527F, tens blanked when zero, clamped to 99 | $250E, $251C | `src/game/attract.ts` |
 | Attract cycle: the full SCRIPT_ONE stage table (GAME OVER → intro page → GAME OVER → demo) | $0164 | `src/game/attract.ts` |
-| Attract intro page: headers at $40 then every $50 frames; aliens scroll on every $D2 frames at 1 px/frame to Y=$C8, X=$8C+16·colour; text rows ride the column-scroll register from $C8, one char per 8 px; NAMCO after $D2; blink for $40·$11 frames | $0218, $0341, $109B, $10D8, $18C0, $0281 | `src/game/attract.ts` |
+| Attract intro page: headers at $40 then every $50 frames; aliens scroll on every $D2 frames at 1 px/frame to Y=$C8, X=$8C+16·colour; text rows ride the column-scroll register down from the start value $2338 derives from the text's own address (8 × its character row, which parks the first character just past the right edge), one char per 8 px; NAMCO after $D2; blink for $40·$11 frames | $0218, $0341, $109B, $10D8, $18C0, $2338, $0281 | `src/game/attract.ts` |
 | The table's blinking values: characters at $5193 (+2 columns/row), cleared at t%64=0, drawn at t%64=32, flagship cycling 150/200/300/800; rows join as ATTRACT_MODE_SCROLL_ID covers them | $0367, $039A, $03A6 | `src/game/attract.ts` |
 | All attract text from the ROM text table (addresses + ordinals, incl. PTS glyphs $A0-$A2 and the 8-glyph NAMCO logo) | TEXTPTRS $235C | `src/game/romtext.ts` |
 | Intro page per-column colours | COLOUR_ATTRIBUTE_TABLE_3 $1DB1 | `src/game/attract.ts` |

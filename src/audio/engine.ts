@@ -57,6 +57,8 @@ export class AudioEngine {
   private swarmSource: AudioBufferSourceNode | null = null;
   private diveSource: AudioBufferSourceNode | null = null;
   private keepAlive: AudioBufferSourceNode | null = null;
+  /** Last (wall clock, audio clock) pair, for spotting a stalled context. */
+  private lastAlive: { wall: number; audio: number } | null = null;
 
   /** Must be called from a user gesture. */
   async start(): Promise<void> {
@@ -115,24 +117,81 @@ export class AudioEngine {
   }
 
   /**
-   * A silent looping source, connected for as long as the page lives.
+   * An inaudible looping source, connected for as long as the page lives.
    *
-   * It keeps the graph producing samples through the quiet stretches, so the
+   * It keeps the graph producing samples through the quiet stretches so the
    * output stream stays open instead of being parked and having to be
    * reacquired when the next coin goes in.
+   *
+   * The samples are deliberately *not* zero. A stream carrying nothing but
+   * digital silence is exactly what a browser or an OS mixer is entitled to
+   * shut down, which would defeat the whole purpose; a hair of noise at
+   * -80 dBFS is inaudible but keeps real audio flowing.
    */
   private startKeepAlive(ctx: AudioContext): void {
     if (this.keepAlive) return;
-    // One second of zeroes, looped: nothing to hear, everything to keep open.
-    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate), ctx.sampleRate);
+    const frames = Math.ceil(ctx.sampleRate);
+    const buffer = ctx.createBuffer(1, frames, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * 1e-4;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
-    const gain = ctx.createGain();
-    gain.gain.value = 0;
-    source.connect(gain).connect(ctx.destination);
+    source.connect(ctx.destination);
     source.start();
     this.keepAlive = source;
+  }
+
+  /**
+   * Watchdog for a context that has died with its eyes open.
+   *
+   * Resuming only helps when the browser admits the context is suspended.
+   * An output stream can also be torn down underneath a context that still
+   * reports `running`, and then every sound is scheduled into a graph that
+   * goes nowhere -- silence that no gesture will lift. The giveaway is the
+   * audio clock: it advances in real time while the stream is alive and
+   * stops dead when it is not. When it has fallen far behind the wall
+   * clock, the graph is rebuilt on a fresh context.
+   */
+  checkAlive(): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.ready) return;
+    if (ctx.state !== 'running') {
+      this.lastAlive = null;
+      this.resumeIfNeeded();
+      return;
+    }
+    const wall = performance.now();
+    const audio = ctx.currentTime * 1000;
+    const last = this.lastAlive;
+    this.lastAlive = { wall, audio };
+    if (!last) return;
+    const wallElapsed = wall - last.wall;
+    const audioElapsed = audio - last.audio;
+    // Generous: only a clock that has all but stopped counts as stalled.
+    if (wallElapsed > 1000 && audioElapsed < wallElapsed * 0.25) this.rebuild();
+  }
+
+  /**
+   * Start again on a fresh context, keeping the decoded buffers -- they are
+   * plain sample data and outlive the context that produced them.
+   */
+  private rebuild(): void {
+    const dead = this.ctx;
+    this.ctx = null;
+    this.keepAlive = null;
+    this.swarmSource = null;
+    this.diveSource = null;
+    this.lastAlive = null;
+    this.pending = [];
+    void dead?.close().catch(() => {
+      // Already gone; nothing to clean up.
+    });
+
+    const ctx = new AudioContext();
+    this.ctx = ctx;
+    this.startKeepAlive(ctx);
+    this.resumeIfNeeded();
   }
 
   /** Play whatever was asked for while the buffers were still decoding. */
@@ -227,6 +286,12 @@ export class AudioEngine {
   /** The background swarm loop, with a tempo that climbs during the stage. */
   setSwarmLoop(playing: boolean, rate: number): void {
     if (!this.ready || !this.ctx) return;
+    // The loop is asked for every frame, so a parked context gets a nudge
+    // every frame too, and the hum comes back by itself once it wakes.
+    if (this.ctx.state !== 'running') {
+      this.resumeIfNeeded();
+      if (playing) return;
+    }
 
     if (!playing) {
       if (this.swarmSource) {

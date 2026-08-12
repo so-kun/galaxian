@@ -108,13 +108,19 @@ playback rate with stage time.
   land (dropping it if more than a second has passed). Without that the
   first coin of a session is silent and every later one is heard.
 - **A context left alone gets parked.** Sitting in attract means minutes
-  without an effect, after which the browser can suspend the context; every
-  sound then goes into a frozen graph and is lost until something wakes it,
-  which is why switching tabs appeared to fix it. `AudioEngine` keeps a
-  silent looping source connected so the output stream never goes idle,
-  revives the context whenever a sound is wanted, on any gesture and on
-  becoming visible again, and holds the sound that triggered the revival
-  rather than firing it into the parked graph.
+  without an effect, and audio dies in two different ways after that.
+  The context may be *suspended*, which `AudioEngine` answers by reviving it
+  whenever a sound is wanted, on any gesture and on becoming visible again,
+  holding the sound that triggered the revival rather than firing it into
+  the parked graph. The output stream may instead be torn down underneath a
+  context that still reports `running`, which no amount of resuming will
+  fix; the tell is that the audio clock stops while the wall clock does
+  not, so a watchdog compares the two every few seconds and rebuilds the
+  graph on a fresh context when they diverge (the decoded buffers are plain
+  sample data and carry over). A looping keep-alive source holds the stream
+  open in the first place -- carrying a hair of noise at -80 dBFS rather
+  than zeroes, because digital silence is precisely what a browser or an OS
+  mixer is entitled to shut down.
 
 ## Deliberate additions — not on the board at all
 

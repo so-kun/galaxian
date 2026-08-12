@@ -105,6 +105,9 @@ for (const event of ['keydown', 'pointerdown', 'touchstart']) {
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden) audio.resumeIfNeeded();
 });
+// Nothing may happen for minutes at a time in attract, so the audio graph is
+// checked on a timer rather than only when something wants to make a noise.
+setInterval(() => audio.checkAlive(), 3000);
 
 const fit = () => renderer.fitToWindow(stage);
 fit();

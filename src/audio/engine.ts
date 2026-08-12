@@ -51,10 +51,12 @@ export class AudioEngine {
 
   /** Set while start() is in flight, which is when one-shots are held. */
   private starting = false;
+  private resuming = false;
   private pending: { name: SoundName; options: PlayOptions; at: number }[] = [];
 
   private swarmSource: AudioBufferSourceNode | null = null;
   private diveSource: AudioBufferSourceNode | null = null;
+  private keepAlive: AudioBufferSourceNode | null = null;
 
   /** Must be called from a user gesture. */
   async start(): Promise<void> {
@@ -80,10 +82,57 @@ export class AudioEngine {
         }),
       );
       this.ready = true;
+      this.startKeepAlive(ctx);
     } finally {
       this.starting = false;
       this.flushPending();
     }
+  }
+
+  /**
+   * Bring back a context the browser has parked. Safe to call at any time,
+   * and cheap when nothing is wrong.
+   *
+   * Leaving the game sitting in attract means minutes without a single
+   * effect, and a context that produces nothing for that long can end up
+   * suspended -- after which every sound is silently dropped until
+   * something, switching tabs being the usual one, wakes it again.
+   */
+  resumeIfNeeded(): void {
+    const ctx = this.ctx;
+    if (!ctx || this.resuming || ctx.state === 'running') return;
+    this.resuming = true;
+    void ctx.resume().then(
+      () => {
+        this.resuming = false;
+        this.flushPending();
+      },
+      () => {
+        this.resuming = false;
+        this.pending = [];
+      },
+    );
+  }
+
+  /**
+   * A silent looping source, connected for as long as the page lives.
+   *
+   * It keeps the graph producing samples through the quiet stretches, so the
+   * output stream stays open instead of being parked and having to be
+   * reacquired when the next coin goes in.
+   */
+  private startKeepAlive(ctx: AudioContext): void {
+    if (this.keepAlive) return;
+    // One second of zeroes, looped: nothing to hear, everything to keep open.
+    const buffer = ctx.createBuffer(1, Math.ceil(ctx.sampleRate), ctx.sampleRate);
+    const source = ctx.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    source.connect(gain).connect(ctx.destination);
+    source.start();
+    this.keepAlive = source;
   }
 
   /** Play whatever was asked for while the buffers were still decoding. */
@@ -102,22 +151,25 @@ export class AudioEngine {
   }
 
   private play(name: SoundName, options: PlayOptions = {}): AudioBufferSourceNode | null {
-    if (!this.ready || !this.ctx) {
-      // Hold a one-shot that arrived with the unlocking gesture itself. The
-      // cap keeps a slow decode from queueing up a burst of stale effects.
-      if (this.starting && this.pending.length < 4) {
+    const ctx = this.ctx;
+    if (!this.ready || !ctx || ctx.state !== 'running') {
+      // Hold a one-shot that arrived with the unlocking gesture itself, or
+      // while a parked context is waking up. The cap keeps a slow decode
+      // from queueing up a burst of stale effects.
+      if ((this.starting || this.ready) && this.pending.length < 4) {
         this.pending.push({ name, options, at: performance.now() });
       }
+      this.resumeIfNeeded();
       return null;
     }
     const buffer = this.buffers.get(name);
     if (!buffer) return null;
-    const source = this.ctx.createBufferSource();
+    const source = ctx.createBufferSource();
     source.buffer = buffer;
     if (options.rate) source.playbackRate.value = options.rate;
-    const gain = this.ctx.createGain();
+    const gain = ctx.createGain();
     gain.gain.value = options.gain ?? 1;
-    source.connect(gain).connect(this.ctx.destination);
+    source.connect(gain).connect(ctx.destination);
     source.start();
     return source;
   }

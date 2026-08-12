@@ -89,9 +89,22 @@ const begin = async () => {
   }
 };
 
+/**
+ * Every gesture also gets a chance to revive a parked audio context, and so
+ * does coming back to the tab. Without this the sound can die during a long
+ * spell in attract and stay dead until the browser happens to wake it.
+ */
+const onGesture = () => {
+  void begin();
+  audio.resumeIfNeeded();
+};
+
 for (const event of ['keydown', 'pointerdown', 'touchstart']) {
-  addEventListener(event, begin);
+  addEventListener(event, onGesture);
 }
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) audio.resumeIfNeeded();
+});
 
 const fit = () => renderer.fitToWindow(stage);
 fit();

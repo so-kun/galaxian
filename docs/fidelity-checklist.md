@@ -82,6 +82,12 @@ playback rate with stage time.
 
 - **Attract demo player**: the demonstration game is driven by a simple
   threat-tracking AI rather than the ROM's scripted fake controller ($0892).
+- **The demonstration game is silent.** On the board it is not: the demo's
+  fake trigger ($0A68) sets the bullet flag without PLAY_PLAYER_SHOOT_SOUND,
+  and the player's death boom is gated on IS_GAME_IN_PLAY ($131C), but the
+  alien and flagship explosions ($1108, $110E) are not gated at all, so a
+  real cabinet pops away to itself in attract. Ours attaches no sound sink
+  to the demo game, so nothing is heard.
 - **Attract GAME OVER page durations** are fixed at 240 frames; the ROM
   chains several counter stages ($018C/$01BE/$02D1/$032E) whose exact sums
   differ slightly, and the swarm from the previous demo is not shown moving
@@ -101,6 +107,14 @@ playback rate with stage time.
   one-shot requested during start-up and plays it as soon as the buffers
   land (dropping it if more than a second has passed). Without that the
   first coin of a session is silent and every later one is heard.
+- **A context left alone gets parked.** Sitting in attract means minutes
+  without an effect, after which the browser can suspend the context; every
+  sound then goes into a frozen graph and is lost until something wakes it,
+  which is why switching tabs appeared to fix it. `AudioEngine` keeps a
+  silent looping source connected so the output stream never goes idle,
+  revives the context whenever a sound is wanted, on any gesture and on
+  becoming visible again, and holds the sound that triggered the revival
+  rather than firing it into the parked graph.
 
 ## Deliberate additions — not on the board at all
 

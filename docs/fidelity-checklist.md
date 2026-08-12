@@ -92,6 +92,16 @@ playback rate with stage time.
   exact packed-swarm save/restore format -- it swaps whole game instances
   instead.
 
+## Browser constraints — differences the platform forces
+
+- **Audio cannot start until the player touches something.** A cabinet just
+  makes noise; a browser refuses until a user gesture. That gesture is
+  usually the coin going in, whose sound is asked for a frame later, long
+  before ten WAVs can be fetched and decoded, so `AudioEngine` holds a
+  one-shot requested during start-up and plays it as soon as the buffers
+  land (dropping it if more than a second has passed). Without that the
+  first coin of a session is silent and every later one is heard.
+
 ## Deliberate additions — not on the board at all
 
 - **The high score survives a reload.** Galaxian has no initial-entry screen

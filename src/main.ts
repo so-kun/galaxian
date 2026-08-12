@@ -76,11 +76,16 @@ let started = false;
 const begin = async () => {
   if (started) return;
   started = true;
+  // Attach the sink before starting, not after. That first gesture is
+  // usually the coin going in, and its sound is asked for a frame later --
+  // long before ten WAVs can be fetched and decoded. The engine holds such
+  // a request and plays it the moment it is ready, so the coin is heard.
+  session.sound = audio;
   try {
     await audio.start();
-    session.sound = audio;
   } catch {
-    // No audio: the game still runs.
+    // No audio: the game still runs, silently.
+    session.sound = null;
   }
 };
 
